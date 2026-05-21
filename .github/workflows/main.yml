@@ -224,69 +224,69 @@ jobs:
     # 1. On deployment branch (main/master)
     # 2. Deployment target is not "none"
     if: |
-      (github.ref == format('refs/heads/{0}', '${{ env.DEPLOYMENT_BRANCH }}') || 
+      (github.ref == format('refs/heads/{0}', env.DEPLOYMENT_BRANCH) || 
        github.ref == 'refs/heads/main' || 
        github.ref == 'refs/heads/master') &&
-      '${{ env.DEPLOYMENT_TARGET }}' != 'none'
-     steps:
-       - name: Check out repository code
-         uses: actions/checkout@v4
+      env.DEPLOYMENT_TARGET != 'none'
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
 
-       - name: Set up Python
-         uses: actions/setup-python@v5
-         with:
-           python-version: '3.11'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-       - name: 🚀 Deploy to AWS (if configured)
-         if: '${{ env.DEPLOYMENT_TARGET }}' == 'aws'
-         run: |
-           echo "📦 Deploying to AWS..."
-           echo "✅ AWS deployment placeholder"
+      - name: 🚀 Deploy to AWS (if configured)
+        if: env.DEPLOYMENT_TARGET == 'aws'
+        run: |
+          echo "📦 Deploying to AWS..."
+          echo "✅ AWS deployment placeholder"
 
-       - name: 🚀 Deploy to GCP (if configured)
-         if: '${{ env.DEPLOYMENT_TARGET }}' == 'gcp'
-         run: |
-           echo "📦 Deploying to GCP..."
-           echo "✅ GCP deployment placeholder"
+      - name: 🚀 Deploy to GCP (if configured)
+        if: env.DEPLOYMENT_TARGET == 'gcp'
+        run: |
+          echo "📦 Deploying to GCP..."
+          echo "✅ GCP deployment placeholder"
 
-       - name: 🚀 Deploy to Azure (if configured)
-         if: '${{ env.DEPLOYMENT_TARGET }}' == 'azure'
-         run: |
-           echo "📦 Deploying to Azure..."
-           echo "✅ Azure deployment placeholder"
+      - name: 🚀 Deploy to Azure (if configured)
+        if: env.DEPLOYMENT_TARGET == 'azure'
+        run: |
+          echo "📦 Deploying to Azure..."
+          echo "✅ Azure deployment placeholder"
 
-       - name: 🚀 Deploy to Docker Hub (if configured)
-         if: '${{ env.DEPLOYMENT_TARGET }}' == 'docker'
-         run: |
-           echo "📦 Building Docker image..."
-           echo "✅ Docker deployment placeholder"
+      - name: 🚀 Deploy to Docker Hub (if configured)
+        if: env.DEPLOYMENT_TARGET == 'docker'
+        run: |
+          echo "📦 Building Docker image..."
+          echo "✅ Docker deployment placeholder"
 
-       - name: 🚀 Deploy to GitHub Pages (if configured)
-         if: '${{ env.DEPLOYMENT_TARGET }}' == 'github-pages'
-         run: |
-           echo "📦 Deploying to GitHub Pages..."
-           echo "✅ GitHub Pages deployment placeholder"
+      - name: 🚀 Deploy to GitHub Pages (if configured)
+        if: env.DEPLOYMENT_TARGET == 'github-pages'
+        run: |
+          echo "📦 Deploying to GitHub Pages..."
+          echo "✅ GitHub Pages deployment placeholder"
 
-       - name: 🚀 Deploy to Netlify (if configured)
-         if: '${{ env.DEPLOYMENT_TARGET }}' == 'netlify'
-         run: |
-           echo "📦 Deploying to Netlify..."
-           npm install -g netlify-cli
-           echo "📝 Generated file: ${{ env.GENERATED_FILE }}"
-           mkdir -p dist
-           cp ${{ env.GENERATED_FILE }} dist/
-           cp -r public/* dist/ 2>/dev/null || true
-           netlify deploy --prod \
-             --dir=dist \
-             --site=${{ secrets.NETLIFY_SITE_ID }} \
-             --auth=${{ secrets.NETLIFY_AUTH_TOKEN }}
-           echo "✅ Netlify deployment complete"
+      - name: 🚀 Deploy to Netlify (if configured)
+        if: env.DEPLOYMENT_TARGET == 'netlify'
+        run: |
+          echo "📦 Deploying to Netlify..."
+          npm install -g netlify-cli
+          echo "📝 Generated file: ${{ env.GENERATED_FILE }}"
+          mkdir -p dist
+          cp ${{ env.GENERATED_FILE }} dist/
+          cp -r public/* dist/ 2>/dev/null || true
+          netlify deploy --prod \
+            --dir=dist \
+            --site=${{ secrets.NETLIFY_SITE_ID }} \
+            --auth=${{ secrets.NETLIFY_AUTH_TOKEN }}
+          echo "✅ Netlify deployment complete"
 
-       - name: 🎉 Deployment Complete
-         run: |
-           echo "✅ Successfully deployed to ${{ env.DEPLOYMENT_TARGET }}"
-           echo "📝 Generated file: ${{ env.GENERATED_FILE }}"
-           echo "🔗 Branch: ${{ github.ref }}"
+      - name: 🎉 Deployment Complete
+        run: |
+          echo "✅ Successfully deployed to ${{ env.DEPLOYMENT_TARGET }}"
+          echo "📝 Generated file: ${{ env.GENERATED_FILE }}"
+          echo "🔗 Branch: ${{ github.ref }}"
 
   # ==========================================
   # JOB 6: Notify Completion
