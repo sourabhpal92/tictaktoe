@@ -1,145 +1,167 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Tic Tac Toe</title>
-  <style>
-    .game-board {
-      background-color: #add8e6; /* light blue */
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tic Tac Toe</title>
+    <style>
+        .game-board {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-gap: 10px;
+            background-color: lightblue;
+            padding: 20px;
+            border: 1px solid black;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+        }
 
-    .row {
-      display: flex;
-    }
+        .grid-square {
+            width: 100px;
+            height: 100px;
+            border: 1px solid black;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 36px;
+            cursor: pointer;
+            background-color: #f0f0f0;
+            border-radius: 10px;
+        }
 
-    .cell {
-      width: 50px;
-      height: 50px;
-      border: 1px solid #ccc;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      font-size: 24px;
-    }
+        #restart-button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 10px;
+            background-color: #4CAF50;
+            color: #fff;
+            cursor: pointer;
+        }
 
-    #restart-button {
-      margin-top: 20px;
-    }
+        #restart-button:hover {
+            background-color: #3e8e41;
+        }
 
-    @media only screen and (max-width: 600px) {
-      .game-board {
-        flex-direction: column;
-      }
-      .row {
-        flex-direction: row;
-      }
-      .cell {
-        width: 100px;
-        height: 100px;
-      }
-    }
-  </style>
+        @media only screen and (max-width: 600px) {
+            .game-board {
+                grid-gap: 5px;
+                padding: 10px;
+            }
+
+            .grid-square {
+                width: 50px;
+                height: 50px;
+                font-size: 24px;
+            }
+        }
+    </style>
 </head>
 <body>
-  <h1>Tic Tac Toe</h1>
-  <div class="game-board">
-    <div class="row">
-      <div class="cell" id="cell-0"></div>
-      <div class="cell" id="cell-1"></div>
-      <div class="cell" id="cell-2"></div>
-    </div>
-    <div class="row">
-      <div class="cell" id="cell-3"></div>
-      <div class="cell" id="cell-4"></div>
-      <div class="cell" id="cell-5"></div>
-    </div>
-    <div class="row">
-      <div class="cell" id="cell-6"></div>
-      <div class="cell" id="cell-7"></div>
-      <div class="cell" id="cell-8"></div>
-    </div>
-  </div>
-  <button id="restart-button">Restart Game</button>
-  <script>
-    let board = [];
-    let currentPlayer = "X";
-    let gameOver = false;
+    <div class="game-board"></div>
+    <button id="restart-button">Restart Game</button>
+    <script>
+        let gameBoard = [];
+        let currentPlayer = 'X';
 
-    // Initialize game board
-    for (let i = 0; i < 9; i++) {
-      board.push(null);
-    }
-
-    // Add event listeners to cells
-    for (let i = 0; i < 9; i++) {
-      const cell = document.getElementById(`cell-${i}`);
-      cell.addEventListener("click", () => {
-        if (gameOver) {
-          return;
+        // Initialize game board
+        for (let i = 0; i < 3; i++) {
+            gameBoard.push([]);
+            for (let j = 0; j < 3; j++) {
+                gameBoard[i].push('');
+            }
         }
-        if (board[i] === null) {
-          cell.textContent = currentPlayer;
-          board[i] = currentPlayer;
 
-          // Check for win condition
-          if (checkWin()) {
-            gameOver = true;
-            alert(`Player ${currentPlayer} wins!`);
-          } else if (checkDraw()) {
-            gameOver = true;
-            alert("It's a draw!");
-          } else {
-            currentPlayer = currentPlayer === "X" ? "O" : "X";
-          }
+        // Handle player moves
+        function handleMove(event) {
+            const square = event.target;
+            const row = square.dataset.row;
+            const col = square.dataset.col;
+            if (gameBoard[row][col] === '') {
+                gameBoard[row][col] = currentPlayer;
+                square.textContent = currentPlayer;
+                checkWin();
+                checkDraw();
+                switchTurns();
+            }
         }
-      });
-    }
 
-    // Add event listener to restart button
-    document.getElementById("restart-button").addEventListener("click", () => {
-      // Reset game state
-      currentPlayer = "X";
-      gameOver = false;
-      board = new Array(9).fill(null);
-      // Reset game board display
-      for (let i = 0; i < 9; i++) {
-        const cell = document.getElementById(`cell-${i}`);
-        cell.textContent = "";
-      }
-    });
+        // Check for win conditions
+        function checkWin() {
+            // Check horizontal wins
+            for (let i = 0; i < 3; i++) {
+                if (gameBoard[i][0] === gameBoard[i][1] && gameBoard[i][1] === gameBoard[i][2] && gameBoard[i][0] !== '') {
+                    alert(`Player ${gameBoard[i][0]} wins!`);
+                    return;
+                }
+            }
+            // Check vertical wins
+            for (let i = 0; i < 3; i++) {
+                if (gameBoard[0][i] === gameBoard[1][i] && gameBoard[1][i] === gameBoard[2][i] && gameBoard[0][i] !== '') {
+                    alert(`Player ${gameBoard[0][i]} wins!`);
+                    return;
+                }
+            }
+            // Check diagonal wins
+            if (gameBoard[0][0] === gameBoard[1][1] && gameBoard[1][1] === gameBoard[2][2] && gameBoard[0][0] !== '') {
+                alert(`Player ${gameBoard[0][0]} wins!`);
+                return;
+            }
+            if (gameBoard[0][2] === gameBoard[1][1] && gameBoard[1][1] === gameBoard[2][0] && gameBoard[0][2] !== '') {
+                alert(`Player ${gameBoard[0][2]} wins!`);
+                return;
+            }
+        }
 
-    // Function to check for win condition
-    function checkWin() {
-      // Check rows and columns
-      for (let i = 0; i < 3; i++) {
-        if (board[i * 3] !== null && board[i * 3] === board[i * 3 + 1] && board[i * 3] === board[i * 3 + 2]) {
-          return true;
+        // Check for draw conditions
+        function checkDraw() {
+            for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 3; j++) {
+                    if (gameBoard[i][j] === '') {
+                        return;
+                    }
+                }
+            }
+            alert('It\'s a draw!');
         }
-        if (board[i] !== null && board[i] === board[i + 3] && board[i] === board[i + 6]) {
-          return true;
-        }
-      }
-      // Check diagonals
-      if (board[0] !== null && board[0] === board[4] && board[0] === board[8]) {
-        return true;
-      }
-      if (board[2] !== null && board[2] === board[4] && board[2] === board[6]) {
-        return true;
-      }
-      return false;
-    }
 
-    // Function to check for draw condition
-    function checkDraw() {
-      for (let i = 0; i < 9; i++) {
-        if (board[i] === null) {
-          return false;
+        // Switch turns between players
+        function switchTurns() {
+            currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
         }
-      }
-      return true;
-    }
-  </script>
+
+        // Handle restart button click
+        function handleRestart() {
+            gameBoard = [];
+            for (let i = 0; i < 3; i++) {
+                gameBoard.push([]);
+                for (let j = 0; j < 3; j++) {
+                    gameBoard[i].push('');
+                }
+            }
+            currentPlayer = 'X';
+            const gridSquares = document.querySelectorAll('.grid-square');
+            gridSquares.forEach((square) => {
+                square.textContent = '';
+            });
+        }
+
+        // Initialize grid squares and add event listeners
+        const gridContainer = document.querySelector('.game-board');
+        for (let i = 0; i < 3; i++) {
+            for (let j = 0; j < 3; j++) {
+                const gridSquare = document.createElement('div');
+                gridSquare.classList.add('grid-square');
+                gridSquare.dataset.row = i;
+                gridSquare.dataset.col = j;
+                gridSquare.addEventListener('click', handleMove);
+                gridContainer.appendChild(gridSquare);
+            }
+        }
+
+        // Add event listener to restart button
+        const restartButton = document.querySelector('#restart-button');
+        restartButton.addEventListener('click', handleRestart);
+    </script>
 </body>
 </html>
