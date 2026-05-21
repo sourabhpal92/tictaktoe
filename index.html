@@ -15,169 +15,152 @@
             grid-template-columns: repeat(3, 1fr);
             grid-gap: 10px;
             width: 300px;
+            height: 300px;
+            border: 1px solid #ccc;
             margin: 40px auto;
         }
         
-        .game-square {
+        .square {
             background-color: #f0f0f0;
-            padding: 40px;
-            border: none;
-            border-radius: 10px;
+            padding: 20px;
+            border: 1px solid #ccc;
             cursor: pointer;
             font-size: 24px;
-            font-weight: bold;
         }
         
-        .game-square:hover {
-            background-color: #ccc;
+        .square:hover {
+            background-color: #e0e0e0;
         }
         
-        .restart-button {
+        #game-status {
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+        
+        #restart-button {
+            padding: 10px 20px;
             background-color: #4CAF50;
             color: #fff;
-            padding: 10px 20px;
             border: none;
-            border-radius: 10px;
+            border-radius: 5px;
             cursor: pointer;
-            font-size: 16px;
         }
         
-        .restart-button:hover {
+        #restart-button:hover {
             background-color: #3e8e41;
         }
         
-        .win-message {
-            font-size: 24px;
-            font-weight: bold;
-            color: #666;
-            margin-bottom: 20px;
-        }
-        
-        .draw-message {
-            font-size: 24px;
-            font-weight: bold;
-            color: #666;
-            margin-bottom: 20px;
+        @media only screen and (max-width: 600px) {
+            .game-board {
+                width: 200px;
+                height: 200px;
+            }
+            .square {
+                padding: 10px;
+                font-size: 18px;
+            }
         }
     </style>
 </head>
 <body>
-    <h1>Tic Tac Toe Game</h1>
-    <div class="game-board" id="game-board">
-        <button class="game-square" id="square-0"></button>
-        <button class="game-square" id="square-1"></button>
-        <button class="game-square" id="square-2"></button>
-        <button class="game-square" id="square-3"></button>
-        <button class="game-square" id="square-4"></button>
-        <button class="game-square" id="square-5"></button>
-        <button class="game-square" id="square-6"></button>
-        <button class="game-square" id="square-7"></button>
-        <button class="game-square" id="square-8"></button>
+    <div id="game-status"></div>
+    <div class="game-board">
+        <div class="square" id="square-1"></div>
+        <div class="square" id="square-2"></div>
+        <div class="square" id="square-3"></div>
+        <div class="square" id="square-4"></div>
+        <div class="square" id="square-5"></div>
+        <div class="square" id="square-6"></div>
+        <div class="square" id="square-7"></div>
+        <div class="square" id="square-8"></div>
+        <div class="square" id="square-9"></div>
     </div>
-    <button class="restart-button" id="restart-button">Restart Game</button>
-    <div class="win-message" id="win-message"></div>
-    <div class="draw-message" id="draw-message"></div>
-
+    <button id="restart-button">Restart Game</button>
     <script>
-        class Game {
-            constructor() {
-                this.gameBoard = [];
-                this.activePlayer = 'X';
-                this.gameOver = false;
-                this.initGameBoard();
-                this.addEventListeners();
-            }
+        let game = {
+            board: ['', '', '', '', '', '', '', '', ''],
+            activePlayer: 'X',
+            winner: null,
+            gameOver: false
+        };
 
-            initGameBoard() {
-                for (let i = 0; i < 9; i++) {
-                    this.gameBoard.push('');
-                    const square = document.getElementById(`square-${i}`);
-                    square.innerHTML = '';
-                }
-            }
+        const gameBoard = document.querySelectorAll('.square');
+        const restartButton = document.getElementById('restart-button');
+        const gameStatus = document.getElementById('game-status');
 
-            addEventListeners() {
-                const squares = document.querySelectorAll('.game-square');
-                squares.forEach((square) => {
-                    square.addEventListener('click', () => {
-                        if (!this.gameOver) {
-                            const index = parseInt(square.id.split('-')[1]);
-                            if (this.gameBoard[index] === '') {
-                                this.gameBoard[index] = this.activePlayer;
-                                square.innerHTML = this.activePlayer;
-                                this.checkWinConditions();
-                                this.checkDrawConditions();
-                                this.activePlayer = this.activePlayer === 'X' ? 'O' : 'X';
-                            }
-                        }
-                    });
-                });
+        gameBoard.forEach((square) => {
+            square.addEventListener('click', handleSquareClick);
+        });
 
-                const restartButton = document.getElementById('restart-button');
-                restartButton.addEventListener('click', () => {
-                    this.restartGame();
-                });
-            }
+        restartButton.addEventListener('click', restartGame);
 
-            checkWinConditions() {
-                const winConditions = [
-                    [0, 1, 2],
-                    [3, 4, 5],
-                    [6, 7, 8],
-                    [0, 3, 6],
-                    [1, 4, 7],
-                    [2, 5, 8],
-                    [0, 4, 8],
-                    [2, 4, 6],
-                ];
+        function handleSquareClick(event) {
+            const square = event.target;
+            const squareIndex = parseInt(square.id.replace('square-', '')) - 1;
 
-                for (let i = 0; i < winConditions.length; i++) {
-                    const condition = winConditions[i];
-                    if (
-                        this.gameBoard[condition[0]] === this.gameBoard[condition[1]] &&
-                        this.gameBoard[condition[1]] === this.gameBoard[condition[2]] &&
-                        this.gameBoard[condition[0]] !== ''
-                    ) {
-                        this.gameOver = true;
-                        this.displayWinMessage(this.gameBoard[condition[0]]);
-                        return;
-                    }
-                }
-            }
-
-            checkDrawConditions() {
-                if (!this.gameOver && !this.gameBoard.includes('')) {
-                    this.gameOver = true;
-                    this.displayDrawMessage();
-                }
-            }
-
-            displayWinMessage(winner) {
-                const winMessage = document.getElementById('win-message');
-                winMessage.innerHTML = `Player ${winner} wins!`;
-                winMessage.style.display = 'block';
-            }
-
-            displayDrawMessage() {
-                const drawMessage = document.getElementById('draw-message');
-                drawMessage.innerHTML = 'It\'s a draw!';
-                drawMessage.style.display = 'block';
-            }
-
-            restartGame() {
-                this.gameOver = false;
-                this.activePlayer = 'X';
-                this.initGameBoard();
-                const winMessage = document.getElementById('win-message');
-                winMessage.innerHTML = '';
-                winMessage.style.display = 'none';
-                const drawMessage = document.getElementById('draw-message');
-                drawMessage.innerHTML = '';
-                drawMessage.style.display = 'none';
+            if (game.board[squareIndex] === '' && !game.gameOver) {
+                game.board[squareIndex] = game.activePlayer;
+                square.textContent = game.activePlayer;
+                switchTurns();
+                checkForWinner();
+                updateGameStatus();
             }
         }
 
-        const game = new Game();
+        function switchTurns() {
+            game.activePlayer = game.activePlayer === 'X' ? 'O' : 'X';
+        }
+
+        function checkForWinner() {
+            const winningCombinations = [
+                [0, 1, 2],
+                [3, 4, 5],
+                [6, 7, 8],
+                [0, 3, 6],
+                [1, 4, 7],
+                [2, 5, 8],
+                [0, 4, 8],
+                [2, 4, 6]
+            ];
+
+            for (let i = 0; i < winningCombinations.length; i++) {
+                const combination = winningCombinations[i];
+                if (game.board[combination[0]] === game.board[combination[1]] &&
+                    game.board[combination[1]] === game.board[combination[2]] &&
+                    game.board[combination[0]] !== '') {
+                    game.winner = game.board[combination[0]];
+                    game.gameOver = true;
+                    return;
+                }
+            }
+
+            if (!game.board.includes('')) {
+                game.gameOver = true;
+            }
+        }
+
+        function updateGameStatus() {
+            if (game.gameOver) {
+                if (game.winner) {
+                    gameStatus.textContent = `Player ${game.winner} wins!`;
+                } else {
+                    gameStatus.textContent = 'It\'s a draw!';
+                }
+            } else {
+                gameStatus.textContent = `Player ${game.activePlayer}'s turn`;
+            }
+        }
+
+        function restartGame() {
+            game.board = ['', '', '', '', '', '', '', '', ''];
+            game.activePlayer = 'X';
+            game.winner = null;
+            game.gameOver = false;
+            gameBoard.forEach((square) => {
+                square.textContent = '';
+            });
+            updateGameStatus();
+        }
     </script>
 </body>
 </html>
