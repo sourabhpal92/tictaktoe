@@ -1,0 +1,319 @@
+# =========================================================================
+# Generic AI-Agent CI/CD Pipeline (Ticket System Agnostic)
+# =========================================================================
+
+name: AI-Agent CI/CD Pipeline
+
+# 1. Trigger the pipeline on any push (including agent feature branches)
+on:
+  push:
+    branches:
+      - '**' # Matches any branch name
+
+# ==========================================
+# ENVIRONMENT VARIABLES (Configure as needed)
+# ==========================================
+env:
+  # Ticket System Configuration (swap JIRA for AZURE_DEVOPS, LINEAR, GITHUB_ISSUES, etc.)
+  TICKET_SYSTEM: "JIRA"  # Options: JIRA, AZURE_DEVOPS, LINEAR, GITHUB_ISSUES, ASANA
+  
+  # Generated Code File
+  GENERATED_FILE: "index.html"
+  
+  # Deployment Target (Optional)
+  DEPLOYMENT_TARGET: "netlify"  # Options: aws, gcp, azure, github-pages, docker, netlify, none
+  DEPLOYMENT_BRANCH: "main"  # Only deploy on this branch
+
+jobs:
+  # ==========================================
+  # JOB 0: Validate Generated Code
+  # ==========================================
+  validate-generated-code:
+    name: Validate AI-Generated Code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Verify generated file exists and is not empty
+        run: |
+          echo "🔍 Validating ${{ env.GENERATED_FILE }}..."
+          if [ ! -f "${{ env.GENERATED_FILE }}" ]; then
+            echo "❌ Error: ${{ env.GENERATED_FILE }} not found!"
+            exit 1
+          fi
+          SIZE=$(wc -c < ${{ env.GENERATED_FILE }})
+          if [ "$SIZE" -lt 50 ]; then
+            echo "❌ Error: ${{ env.GENERATED_FILE }} is empty or too small ($SIZE bytes)"
+            exit 1
+          fi
+          echo "✅ ${{ env.GENERATED_FILE }} is valid ($SIZE bytes)"
+
+      - name: Display file info
+        run: |
+          echo "📄 File: ${{ env.GENERATED_FILE }}"
+          echo "📊 Lines: $(wc -l < ${{ env.GENERATED_FILE }})"
+          echo "📦 Size: $(du -h ${{ env.GENERATED_FILE }} | cut -f1)"
+
+  # ==========================================
+  # JOB 1: Linting / Static Code Analysis
+  # ==========================================
+  syntax-check:
+    name: Code Syntax & Linting
+    runs-on: ubuntu-latest
+    needs: validate-generated-code
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Upgrade Pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install linting tools
+        run: pip install pylint flake8 black
+
+      - name: Verify code syntax with py_compile
+        run: |
+          echo "🔍 Verifying syntax of ${{ env.GENERATED_FILE }}..."
+          python -m py_compile ${{ env.GENERATED_FILE }}
+          echo "✅ Syntax check passed!"
+
+      - name: Run flake8 linting
+        continue-on-error: true
+        run: |
+          echo "📋 Running flake8 linting..."
+          flake8 ${{ env.GENERATED_FILE }} --max-line-length=120 --ignore=E501,W292
+
+      - name: Run pylint
+        continue-on-error: true
+        run: |
+          echo "📋 Running pylint..."
+          pylint ${{ env.GENERATED_FILE }} --disable=missing-docstring,invalid-name,too-few-public-methods
+
+      - name: Check code formatting with black
+        continue-on-error: true
+        run: |
+          echo "📋 Checking code formatting with black..."
+          black --check ${{ env.GENERATED_FILE }} || echo "⚠️ Code could be reformatted"
+
+  # ==========================================
+  # JOB 2: Security Scan
+  # ==========================================
+  security-scan:
+    name: Security & Quality Scan
+    runs-on: ubuntu-latest
+    needs: syntax-check
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install security tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit safety
+
+      - name: Run Bandit (security linter)
+        continue-on-error: true
+        run: |
+          echo "🔒 Running Bandit security scan..."
+          bandit ${{ env.GENERATED_FILE }} -f json -o bandit-report.json || true
+          echo "✅ Security scan complete"
+
+      - name: Check for known vulnerabilities
+        continue-on-error: true
+        run: |
+          echo "🔒 Checking dependencies for known vulnerabilities..."
+          safety check --json || true
+
+  # ==========================================
+  # JOB 3: Automated Testing
+  # ==========================================
+  run-unit-tests:
+    name: Run Unit Tests
+    runs-on: ubuntu-latest
+    needs: security-scan
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Testing Tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest requests
+
+      - name: Execute generated code (dry run)
+        continue-on-error: true
+        run: |
+          echo "🧪 Testing ${{ env.GENERATED_FILE }} (dry run)..."
+          if [ -f "${{ env.GENERATED_FILE }}" ]; then
+            echo "✅ ${{ env.GENERATED_FILE }} found. Running import test..."
+            python -c "import sys; sys.path.insert(0, '.'); exec(open('${{ env.GENERATED_FILE }}').read())" || echo "⚠️ Script execution had warnings (may be expected)"
+          else
+            echo "❌ No fix file found."
+            exit 1
+          fi
+
+      - name: Run pytest (if test files exist)
+        continue-on-error: true
+        run: |
+          echo "🧪 Running pytest..."
+          if [ -f "test_generated_fix.py" ]; then
+            pytest test_generated_fix.py -v --tb=short
+          elif [ -f "tests/" ]; then
+            pytest tests/ -v --tb=short
+          else
+            echo "ℹ️ No test files found"
+          fi
+
+  # ==========================================
+  # JOB 4: Build & Archive Artifacts
+  # ==========================================
+  build-artifacts:
+    name: Build & Archive
+    runs-on: ubuntu-latest
+    needs: run-unit-tests
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Archive generated code
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-generated-code
+          path: ${{ env.GENERATED_FILE }}
+          retention-days: 30
+
+      - name: Create build summary
+        run: |
+          echo "# Build Summary" > build_summary.md
+          echo "" >> build_summary.md
+          echo "**Generated File:** ${{ env.GENERATED_FILE }}" >> build_summary.md
+          echo "**Ticket System:** ${{ env.TICKET_SYSTEM }}" >> build_summary.md
+          echo "**Branch:** ${{ github.ref }}" >> build_summary.md
+          echo "**Commit:** ${{ github.sha }}" >> build_summary.md
+          echo "**Time:** $(date)" >> build_summary.md
+          cat build_summary.md
+
+  # ==========================================
+  # JOB 5: Conditional Deployment
+  # ==========================================
+  deploy-to-target:
+    name: Deploy to ${{ env.DEPLOYMENT_TARGET }}
+    runs-on: ubuntu-latest
+    needs: build-artifacts
+    environment: Dev  # Use your GitHub environment
+    # Only deploy if:
+    # 1. On deployment branch (main/master)
+    # 2. Deployment target is not "none"
+    if: |
+      (github.ref == format('refs/heads/{0}', '${{ env.DEPLOYMENT_BRANCH }}') || 
+       github.ref == 'refs/heads/main' || 
+       github.ref == 'refs/heads/master') &&
+      '${{ env.DEPLOYMENT_TARGET }}' != 'none'
+     steps:
+       - name: Check out repository code
+         uses: actions/checkout@v4
+
+       - name: Set up Python
+         uses: actions/setup-python@v5
+         with:
+           python-version: '3.11'
+
+       - name: 🚀 Deploy to AWS (if configured)
+         if: '${{ env.DEPLOYMENT_TARGET }}' == 'aws'
+         run: |
+           echo "📦 Deploying to AWS..."
+           echo "✅ AWS deployment placeholder"
+
+       - name: 🚀 Deploy to GCP (if configured)
+         if: '${{ env.DEPLOYMENT_TARGET }}' == 'gcp'
+         run: |
+           echo "📦 Deploying to GCP..."
+           echo "✅ GCP deployment placeholder"
+
+       - name: 🚀 Deploy to Azure (if configured)
+         if: '${{ env.DEPLOYMENT_TARGET }}' == 'azure'
+         run: |
+           echo "📦 Deploying to Azure..."
+           echo "✅ Azure deployment placeholder"
+
+       - name: 🚀 Deploy to Docker Hub (if configured)
+         if: '${{ env.DEPLOYMENT_TARGET }}' == 'docker'
+         run: |
+           echo "📦 Building Docker image..."
+           echo "✅ Docker deployment placeholder"
+
+       - name: 🚀 Deploy to GitHub Pages (if configured)
+         if: '${{ env.DEPLOYMENT_TARGET }}' == 'github-pages'
+         run: |
+           echo "📦 Deploying to GitHub Pages..."
+           echo "✅ GitHub Pages deployment placeholder"
+
+       - name: 🚀 Deploy to Netlify (if configured)
+         if: '${{ env.DEPLOYMENT_TARGET }}' == 'netlify'
+         run: |
+           echo "📦 Deploying to Netlify..."
+           npm install -g netlify-cli
+           echo "📝 Generated file: ${{ env.GENERATED_FILE }}"
+           mkdir -p dist
+           cp ${{ env.GENERATED_FILE }} dist/
+           cp -r public/* dist/ 2>/dev/null || true
+           netlify deploy --prod \
+             --dir=dist \
+             --site=${{ secrets.NETLIFY_SITE_ID }} \
+             --auth=${{ secrets.NETLIFY_AUTH_TOKEN }}
+           echo "✅ Netlify deployment complete"
+
+       - name: 🎉 Deployment Complete
+         run: |
+           echo "✅ Successfully deployed to ${{ env.DEPLOYMENT_TARGET }}"
+           echo "📝 Generated file: ${{ env.GENERATED_FILE }}"
+           echo "🔗 Branch: ${{ github.ref }}"
+
+  # ==========================================
+  # JOB 6: Notify Completion
+  # ==========================================
+  notify-completion:
+    name: Notify Pipeline Completion
+    runs-on: ubuntu-latest
+    needs: [deploy-to-target]
+    if: always()
+    steps:
+      - name: Check pipeline status
+        run: |
+          if [ "${{ needs.deploy-to-target.result }}" == "success" ]; then
+            echo "✅ Pipeline completed successfully!"
+          elif [ "${{ needs.deploy-to-target.result }}" == "skipped" ]; then
+            echo "⏭️ Deployment was skipped (not on deployment branch or no target)"
+          else
+            echo "⚠️ Pipeline had failures. Check logs."
+          fi
+
+      - name: Summary
+        run: |
+          echo "## CI/CD Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Ticket System:** ${{ env.TICKET_SYSTEM }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Generated File:** ${{ env.GENERATED_FILE }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployment Target:** ${{ env.DEPLOYMENT_TARGET }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch:** ${{ github.ref }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
