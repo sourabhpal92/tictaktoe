@@ -3,37 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tic Tac Toe</title>
+    <title>Tic Tac Toe Game</title>
     <style>
         .game-board {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             grid-gap: 10px;
-            background-color: lightblue;
-            padding: 20px;
-            border: 1px solid black;
-            border-radius: 10px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+            width: 300px;
+            height: 300px;
+            background-color: #ADD8E6; /* light blue background */
+            margin: 20px auto;
         }
 
-        .grid-square {
-            width: 100px;
-            height: 100px;
-            border: 1px solid black;
+        .square {
+            width: 100%;
+            height: 100%;
+            border: 1px solid #000;
             display: flex;
             justify-content: center;
             align-items: center;
             font-size: 36px;
             cursor: pointer;
-            background-color: #f0f0f0;
-            border-radius: 10px;
         }
 
         #restart-button {
-            margin-top: 20px;
+            margin: 20px auto;
+            display: block;
             padding: 10px 20px;
             border: none;
-            border-radius: 10px;
+            border-radius: 5px;
             background-color: #4CAF50;
             color: #fff;
             cursor: pointer;
@@ -45,123 +43,87 @@
 
         @media only screen and (max-width: 600px) {
             .game-board {
-                grid-gap: 5px;
-                padding: 10px;
-            }
-
-            .grid-square {
-                width: 50px;
-                height: 50px;
-                font-size: 24px;
+                width: 200px;
+                height: 200px;
             }
         }
     </style>
 </head>
 <body>
-    <div class="game-board"></div>
+    <div class="game-board">
+        <div class="row">
+            <div class="square" id="square-0" data-index="0"></div>
+            <div class="square" id="square-1" data-index="1"></div>
+            <div class="square" id="square-2" data-index="2"></div>
+        </div>
+        <div class="row">
+            <div class="square" id="square-3" data-index="3"></div>
+            <div class="square" id="square-4" data-index="4"></div>
+            <div class="square" id="square-5" data-index="5"></div>
+        </div>
+        <div class="row">
+            <div class="square" id="square-6" data-index="6"></div>
+            <div class="square" id="square-7" data-index="7"></div>
+            <div class="square" id="square-8" data-index="8"></div>
+        </div>
+    </div>
     <button id="restart-button">Restart Game</button>
+
     <script>
-        let gameBoard = [];
         let currentPlayer = 'X';
+        let gameBoard = new Array(9).fill('');
+        let gameOver = false;
 
-        // Initialize game board
-        for (let i = 0; i < 3; i++) {
-            gameBoard.push([]);
-            for (let j = 0; j < 3; j++) {
-                gameBoard[i].push('');
-            }
-        }
+        const squares = document.querySelectorAll('.square');
+        squares.forEach((square) => {
+            square.addEventListener('click', handleMove);
+        });
 
-        // Handle player moves
+        document.getElementById('restart-button').addEventListener('click', restartGame);
+
         function handleMove(event) {
             const square = event.target;
-            const row = square.dataset.row;
-            const col = square.dataset.col;
-            if (gameBoard[row][col] === '') {
-                gameBoard[row][col] = currentPlayer;
-                square.textContent = currentPlayer;
-                checkWin();
-                checkDraw();
-                switchTurns();
-            }
-        }
-
-        // Check for win conditions
-        function checkWin() {
-            // Check horizontal wins
-            for (let i = 0; i < 3; i++) {
-                if (gameBoard[i][0] === gameBoard[i][1] && gameBoard[i][1] === gameBoard[i][2] && gameBoard[i][0] !== '') {
-                    alert(`Player ${gameBoard[i][0]} wins!`);
-                    return;
-                }
-            }
-            // Check vertical wins
-            for (let i = 0; i < 3; i++) {
-                if (gameBoard[0][i] === gameBoard[1][i] && gameBoard[1][i] === gameBoard[2][i] && gameBoard[0][i] !== '') {
-                    alert(`Player ${gameBoard[0][i]} wins!`);
-                    return;
-                }
-            }
-            // Check diagonal wins
-            if (gameBoard[0][0] === gameBoard[1][1] && gameBoard[1][1] === gameBoard[2][2] && gameBoard[0][0] !== '') {
-                alert(`Player ${gameBoard[0][0]} wins!`);
-                return;
-            }
-            if (gameBoard[0][2] === gameBoard[1][1] && gameBoard[1][1] === gameBoard[2][0] && gameBoard[0][2] !== '') {
-                alert(`Player ${gameBoard[0][2]} wins!`);
-                return;
-            }
-        }
-
-        // Check for draw conditions
-        function checkDraw() {
-            for (let i = 0; i < 3; i++) {
-                for (let j = 0; j < 3; j++) {
-                    if (gameBoard[i][j] === '') {
-                        return;
-                    }
-                }
-            }
-            alert('It\'s a draw!');
-        }
-
-        // Switch turns between players
-        function switchTurns() {
+            const squareIndex = parseInt(square.dataset.index);
+            if (gameOver || gameBoard[squareIndex] !== '') return;
+            gameBoard[squareIndex] = currentPlayer;
+            square.innerHTML = currentPlayer;
+            checkWinCondition();
+            checkDrawCondition();
             currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
         }
 
-        // Handle restart button click
-        function handleRestart() {
-            gameBoard = [];
-            for (let i = 0; i < 3; i++) {
-                gameBoard.push([]);
-                for (let j = 0; j < 3; j++) {
-                    gameBoard[i].push('');
+        function checkWinCondition() {
+            const winConditions = [
+                [0, 1, 2], [3, 4, 5], [6, 7, 8], // horizontal
+                [0, 3, 6], [1, 4, 7], [2, 5, 8], // vertical
+                [0, 4, 8], [2, 4, 6] // diagonal
+            ];
+            for (const condition of winConditions) {
+                if (gameBoard[condition[0]] === gameBoard[condition[1]] &&
+                    gameBoard[condition[1]] === gameBoard[condition[2]] &&
+                    gameBoard[condition[0]] !== '') {
+                    gameOver = true;
+                    alert(`Player ${gameBoard[condition[0]]} wins!`);
+                    return;
                 }
             }
-            currentPlayer = 'X';
-            const gridSquares = document.querySelectorAll('.grid-square');
-            gridSquares.forEach((square) => {
-                square.textContent = '';
-            });
         }
 
-        // Initialize grid squares and add event listeners
-        const gridContainer = document.querySelector('.game-board');
-        for (let i = 0; i < 3; i++) {
-            for (let j = 0; j < 3; j++) {
-                const gridSquare = document.createElement('div');
-                gridSquare.classList.add('grid-square');
-                gridSquare.dataset.row = i;
-                gridSquare.dataset.col = j;
-                gridSquare.addEventListener('click', handleMove);
-                gridContainer.appendChild(gridSquare);
+        function checkDrawCondition() {
+            if (!gameBoard.includes('')) {
+                gameOver = true;
+                alert('It\'s a draw!');
             }
         }
 
-        // Add event listener to restart button
-        const restartButton = document.querySelector('#restart-button');
-        restartButton.addEventListener('click', handleRestart);
+        function restartGame() {
+            gameBoard = new Array(9).fill('');
+            currentPlayer = 'X';
+            gameOver = false;
+            squares.forEach((square) => {
+                square.innerHTML = '';
+            });
+        }
     </script>
 </body>
 </html>
