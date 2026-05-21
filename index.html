@@ -3,181 +3,165 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tic Tac Toe Game</title>
+    <title>Tic Tac Toe</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-        }
-        
         .game-board {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             grid-gap: 10px;
-            width: 300px;
-            margin: 40px auto;
-        }
-        
-        .game-square {
-            background-color: #f0f0f0;
-            padding: 40px;
-            border: none;
+            background-color: lightblue;
+            padding: 20px;
+            border: 1px solid black;
             border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .grid-square {
+            width: 100px;
+            height: 100px;
+            border: 1px solid black;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 36px;
             cursor: pointer;
-            font-size: 24px;
-            font-weight: bold;
+            background-color: #f0f0f0;
+            border-radius: 10px;
         }
-        
-        .game-square:hover {
-            background-color: #ccc;
-        }
-        
-        .restart-button {
-            background-color: #4CAF50;
-            color: #fff;
+
+        #restart-button {
+            margin-top: 20px;
             padding: 10px 20px;
             border: none;
             border-radius: 10px;
+            background-color: #4CAF50;
+            color: #fff;
             cursor: pointer;
-            font-size: 16px;
         }
-        
-        .restart-button:hover {
+
+        #restart-button:hover {
             background-color: #3e8e41;
         }
-        
-        .win-message {
-            font-size: 24px;
-            font-weight: bold;
-            color: #666;
-            margin-bottom: 20px;
-        }
-        
-        .draw-message {
-            font-size: 24px;
-            font-weight: bold;
-            color: #666;
-            margin-bottom: 20px;
+
+        @media only screen and (max-width: 600px) {
+            .game-board {
+                grid-gap: 5px;
+                padding: 10px;
+            }
+
+            .grid-square {
+                width: 50px;
+                height: 50px;
+                font-size: 24px;
+            }
         }
     </style>
 </head>
 <body>
-    <h1>Tic Tac Toe Game</h1>
-    <div class="game-board" id="game-board">
-        <button class="game-square" id="square-0"></button>
-        <button class="game-square" id="square-1"></button>
-        <button class="game-square" id="square-2"></button>
-        <button class="game-square" id="square-3"></button>
-        <button class="game-square" id="square-4"></button>
-        <button class="game-square" id="square-5"></button>
-        <button class="game-square" id="square-6"></button>
-        <button class="game-square" id="square-7"></button>
-        <button class="game-square" id="square-8"></button>
-    </div>
-    <button class="restart-button" id="restart-button">Restart Game</button>
-    <div class="win-message" id="win-message"></div>
-    <div class="draw-message" id="draw-message"></div>
-
+    <div class="game-board"></div>
+    <button id="restart-button">Restart Game</button>
     <script>
-        class Game {
-            constructor() {
-                this.gameBoard = [];
-                this.activePlayer = 'X';
-                this.gameOver = false;
-                this.initGameBoard();
-                this.addEventListeners();
-            }
+        let gameBoard = [];
+        let currentPlayer = 'X';
 
-            initGameBoard() {
-                for (let i = 0; i < 9; i++) {
-                    this.gameBoard.push('');
-                    const square = document.getElementById(`square-${i}`);
-                    square.innerHTML = '';
+        // Initialize game board
+        for (let i = 0; i < 3; i++) {
+            gameBoard.push([]);
+            for (let j = 0; j < 3; j++) {
+                gameBoard[i].push('');
+            }
+        }
+
+        // Handle player moves
+        function handleMove(event) {
+            const square = event.target;
+            const row = square.dataset.row;
+            const col = square.dataset.col;
+            if (gameBoard[row][col] === '') {
+                gameBoard[row][col] = currentPlayer;
+                square.textContent = currentPlayer;
+                checkWin();
+                checkDraw();
+                switchTurns();
+            }
+        }
+
+        // Check for win conditions
+        function checkWin() {
+            // Check horizontal wins
+            for (let i = 0; i < 3; i++) {
+                if (gameBoard[i][0] === gameBoard[i][1] && gameBoard[i][1] === gameBoard[i][2] && gameBoard[i][0] !== '') {
+                    alert(`Player ${gameBoard[i][0]} wins!`);
+                    return;
                 }
             }
-
-            addEventListeners() {
-                const squares = document.querySelectorAll('.game-square');
-                squares.forEach((square) => {
-                    square.addEventListener('click', () => {
-                        if (!this.gameOver) {
-                            const index = parseInt(square.id.split('-')[1]);
-                            if (this.gameBoard[index] === '') {
-                                this.gameBoard[index] = this.activePlayer;
-                                square.innerHTML = this.activePlayer;
-                                this.checkWinConditions();
-                                this.checkDrawConditions();
-                                this.activePlayer = this.activePlayer === 'X' ? 'O' : 'X';
-                            }
-                        }
-                    });
-                });
-
-                const restartButton = document.getElementById('restart-button');
-                restartButton.addEventListener('click', () => {
-                    this.restartGame();
-                });
+            // Check vertical wins
+            for (let i = 0; i < 3; i++) {
+                if (gameBoard[0][i] === gameBoard[1][i] && gameBoard[1][i] === gameBoard[2][i] && gameBoard[0][i] !== '') {
+                    alert(`Player ${gameBoard[0][i]} wins!`);
+                    return;
+                }
             }
+            // Check diagonal wins
+            if (gameBoard[0][0] === gameBoard[1][1] && gameBoard[1][1] === gameBoard[2][2] && gameBoard[0][0] !== '') {
+                alert(`Player ${gameBoard[0][0]} wins!`);
+                return;
+            }
+            if (gameBoard[0][2] === gameBoard[1][1] && gameBoard[1][1] === gameBoard[2][0] && gameBoard[0][2] !== '') {
+                alert(`Player ${gameBoard[0][2]} wins!`);
+                return;
+            }
+        }
 
-            checkWinConditions() {
-                const winConditions = [
-                    [0, 1, 2],
-                    [3, 4, 5],
-                    [6, 7, 8],
-                    [0, 3, 6],
-                    [1, 4, 7],
-                    [2, 5, 8],
-                    [0, 4, 8],
-                    [2, 4, 6],
-                ];
-
-                for (let i = 0; i < winConditions.length; i++) {
-                    const condition = winConditions[i];
-                    if (
-                        this.gameBoard[condition[0]] === this.gameBoard[condition[1]] &&
-                        this.gameBoard[condition[1]] === this.gameBoard[condition[2]] &&
-                        this.gameBoard[condition[0]] !== ''
-                    ) {
-                        this.gameOver = true;
-                        this.displayWinMessage(this.gameBoard[condition[0]]);
+        // Check for draw conditions
+        function checkDraw() {
+            for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 3; j++) {
+                    if (gameBoard[i][j] === '') {
                         return;
                     }
                 }
             }
+            alert('It\'s a draw!');
+        }
 
-            checkDrawConditions() {
-                if (!this.gameOver && !this.gameBoard.includes('')) {
-                    this.gameOver = true;
-                    this.displayDrawMessage();
+        // Switch turns between players
+        function switchTurns() {
+            currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+        }
+
+        // Handle restart button click
+        function handleRestart() {
+            gameBoard = [];
+            for (let i = 0; i < 3; i++) {
+                gameBoard.push([]);
+                for (let j = 0; j < 3; j++) {
+                    gameBoard[i].push('');
                 }
             }
+            currentPlayer = 'X';
+            const gridSquares = document.querySelectorAll('.grid-square');
+            gridSquares.forEach((square) => {
+                square.textContent = '';
+            });
+        }
 
-            displayWinMessage(winner) {
-                const winMessage = document.getElementById('win-message');
-                winMessage.innerHTML = `Player ${winner} wins!`;
-                winMessage.style.display = 'block';
-            }
-
-            displayDrawMessage() {
-                const drawMessage = document.getElementById('draw-message');
-                drawMessage.innerHTML = 'It\'s a draw!';
-                drawMessage.style.display = 'block';
-            }
-
-            restartGame() {
-                this.gameOver = false;
-                this.activePlayer = 'X';
-                this.initGameBoard();
-                const winMessage = document.getElementById('win-message');
-                winMessage.innerHTML = '';
-                winMessage.style.display = 'none';
-                const drawMessage = document.getElementById('draw-message');
-                drawMessage.innerHTML = '';
-                drawMessage.style.display = 'none';
+        // Initialize grid squares and add event listeners
+        const gridContainer = document.querySelector('.game-board');
+        for (let i = 0; i < 3; i++) {
+            for (let j = 0; j < 3; j++) {
+                const gridSquare = document.createElement('div');
+                gridSquare.classList.add('grid-square');
+                gridSquare.dataset.row = i;
+                gridSquare.dataset.col = j;
+                gridSquare.addEventListener('click', handleMove);
+                gridContainer.appendChild(gridSquare);
             }
         }
 
-        const game = new Game();
+        // Add event listener to restart button
+        const restartButton = document.querySelector('#restart-button');
+        restartButton.addEventListener('click', handleRestart);
     </script>
 </body>
 </html>
