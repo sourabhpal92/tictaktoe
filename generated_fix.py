@@ -1,99 +1,79 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import numpy as np
 from datetime import datetime
 
-# Set page configuration
-st.set_page_config(
-    page_title='Revenue Dashboard',
-    page_icon=':bar_chart:',
-    layout='wide'
-)
+# App configuration
+st.set_page_config(layout="wide", page_title="Revenue Dashboard", initial_sidebar_state="expanded")
 
-# Load data
-@st.cache(allow_output_mutation=True)
-def load_data():
-    return pd.DataFrame({
-        'date': np.arange('2022-01-01', '2022-01-31', dtype='datetime64'),
-        'revenue': np.random.randint(1000, 10000, size=31),
-        'users': np.random.randint(100, 1000, size=31),
-        'country': np.random.choice(['USA', 'Canada', 'Mexico'], size=31)
+# Load dataset from CSV
+@st.cache
+def load_data(file):
+    return pd.read_csv(file)
+
+# Create UI
+st.markdown("# Revenue Dashboard")
+
+# Sidebar filters
+st.sidebar.title("Filters")
+uploaded_file = st.sidebar.file_uploader("Upload CSV file", type=["csv"])
+country_filter = st.sidebar.multiselect("Country", options=None, default=None)
+date_filter = st.sidebar.date_input("Date", value=None, key="date_filter")
+
+if uploaded_file is not None:
+    data = load_data(uploaded_file)
+else:
+    # Sample data for testing
+    data = pd.DataFrame({
+        "date": ["2022-01-01", "2022-01-02", "2022-01-03", "2022-01-04", "2022-01-05"],
+        "revenue": [100, 200, 300, 400, 500],
+        "users": [10, 20, 30, 40, 50],
+        "country": ["USA", "Canada", "USA", "Canada", "USA"]
     })
 
-# Main function
-def main():
-    data = load_data()
+# Update country filter options
+if data is not None:
+    country_filter_options = data["country"].unique()
+    country_filter = st.sidebar.multiselect("Country", options=country_filter_options, default=country_filter or country_filter_options)
 
-    # Create sidebar filters
-    with st.sidebar:
-        st.markdown('# Revenue Dashboard')
-        st.subheader('Filters')
-        start_date = st.date_input('Start Date', min_value=data['date'].min(), max_value=data['date'].max(), value=data['date'].min())
-        end_date = st.date_input('End Date', min_value=data['date'].min(), max_value=data['date'].max(), value=data['date'].max())
-        country = st.multiselect('Country', data['country'].unique())
+# Apply filters to data
+if data is not None:
+    if country_filter is not None and len(country_filter) > 0:
+        data = data[data["country"].isin(country_filter)]
+    
+    if date_filter is not None:
+        data["date"] = pd.to_datetime(data["date"])
+        start_date = pd.to_datetime(date_filter)
+        data = data[data["date"].dt.date == start_date.date()]
 
-        # Upload CSV file
-        uploaded_file = st.file_uploader("Upload CSV file", type='csv')
+# KPI cards
+st.write("### Key Performance Indicators (KPIs)")
+col1, col2, col3 = st.columns(3)
+col1.metric(label="Total Revenue", value=f"${data['revenue'].sum():,.2f}")
+col2.metric(label="Total Users", value=f"{data['users'].sum():,}")
+col3.metric(label="Average Revenue per User", value=f"${data['revenue'].sum() / data['users'].sum():,.2f}")
 
-        # Download CSV file
-        with st.form("download_form"):
-            st.write("Download CSV")
-            @st.cache
-            def convert_df(data):
-                return data.to_csv().encode('utf-8')
-            csv = convert_df(data)
-            st.download_button(
-                label="Download CSV",
-                data=csv,
-                file_name='data.csv',
-                mime='text/csv',
-            )
+# Plotly charts
+st.write("### Revenue and Users Over Time")
+fig = px.line(data, x="date", y=["revenue", "users"])
+st.plotly_chart(fig, use_container_width=True)
 
-    # Filter data based on sidebar filters
-    filtered_data = data[(data['date'] >= start_date) & (data['date'] <= end_date)]
-    if country:
-        filtered_data = filtered_data[filtered_data['country'].isin(country)]
+st.write("### Revenue by Country")
+fig = px.pie(data, values="revenue", names="country")
+st.plotly_chart(fig, use_container_width=True)
 
-    # Plotly charts
-    st.subheader('KPI Cards')
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total Revenue", f"${filtered_data['revenue'].sum():,.2f}")
-    col2.metric("Total Users", f"{filtered_data['users'].sum():,}")
-    col3.metric("Average Revenue per User", f"${(filtered_data['revenue'].sum() / filtered_data['users'].sum()):,.2f}")
+# Search and filtering
+st.write("### Data Table")
+if data is not None:
+    data_table = data.copy()
+    data_table["date"] = data_table["date"].astype(str)
+    st.table(data_table)
 
-    st.subheader('Revenue Over Time')
-    revenue_over_time = px.line(filtered_data, x='date', y='revenue')
-    revenue_over_time.update_layout(xaxis_title='Date', yaxis_title='Revenue')
-    st.plotly_chart(revenue_over_time, use_container_width=True)
-
-    st.subheader('Users Over Time')
-    users_over_time = px.line(filtered_data, x='date', y='users')
-    users_over_time.update_layout(xaxis_title='Date', yaxis_title='Users')
-    st.plotly_chart(users_over_time, use_container_width=True)
-
-    st.subheader('Revenue by Country')
-    revenue_by_country = filtered_data.groupby('country')['revenue'].sum().reset_index()
-    revenue_by_country = px.bar(revenue_by_country, x='country', y='revenue')
-    revenue_by_country.update_layout(xaxis_title='Country', yaxis_title='Revenue')
-    st.plotly_chart(revenue_by_country, use_container_width=True)
-
-    # Upload CSV support
-    if uploaded_file is not None:
-        uploaded_data = pd.read_csv(uploaded_file)
-        st.subheader('Uploaded Data')
-        st.write(uploaded_data)
-
-    # Search and filtering
-    st.subheader('Search and Filtering')
-    search_term = st.text_input('Search')
-    filtered_data = filtered_data[filtered_data.apply(lambda row: row.astype(str).str.contains(search_term, case=False).any(), axis=1)]
-
-    # Responsive layout
-    st.subheader('Data')
-    st.write(filtered_data)
-
-if __name__ == "__main__":
-    st.set_option('deprecation.showPyplotGlobalUse', False)
-    st.set_option('theme', 'dark')
-    main()
+# Download CSV button
+st.write("### Download CSV")
+if data is not None:
+    @st.cache
+    def convert_df(df):
+        return df.to_csv(index=False)
+    csv = convert_df(data)
+    st.download_button(label="Download CSV", data=csv, file_name="data.csv", mime="text/csv")
