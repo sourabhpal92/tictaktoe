@@ -1,0 +1,34 @@
+project-name/
+├── app/
+│   ├── __init__.py
+│   ├── models/
+│   │   ├── __init__.py
+│   │   ├── user.py
+│   │   └── product.py
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── user_service.py
+│   │   └── product_service.py
+│   ├── repositories/
+│   │   ├── __init__.py
+│   │   ├── user_repository.py
+│   │   └── product_repository.py
+│   ├── controllers/
+│   │   ├── __init__.py
+│   │   ├── user_controller.py
+│   │   └── product_controller.py
+│   └── utils/
+│       ├── __init__.py
+│       └── helpers.py
+├── config/
+│   ├── __init__.py
+│   └── settings.py
+├── tests/
+│   ├── __init__.py
+│   ├── test_user.py
+│   └── test_product.py
+├── requirements.txt
+├── Dockerfile
+├── docker-compose.yml
+├── README.md
+└── main.py
