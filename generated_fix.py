@@ -1,82 +1,81 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-from PIL import Image
-from streamlit import caching
-import io
-from datetime import datetime
-import numpy as np
+import plotly.graph_objects as go
+import streamlit.components.v1 as components
 
-# Function to load data
-@caching.st.memo
-def load_data(file):
-    return pd.read_csv(file)
+# Set dark theme
+st.set_page_config(layout="wide")
+st.markdown(
+    """
+    <style>
+    body {
+        background-color: #2F4F7F;
+        color: #FFFFFF;
+    }
+    .sidebar .sidebar-content {
+        background-color: #2F4F7F;
+    }
+    .main .block-container {
+        background-color: #2F4F7F;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
-# Function to filter data
-def filter_data(df, date_range, country_list):
-    filtered_df = df[(df['date'] >= date_range[0]) & (df['date'] <= date_range[1])]
-    if len(country_list) > 0:
-        filtered_df = filtered_df[filtered_df['country'].isin(country_list)]
-    return filtered_df
+# Sidebar filters
+st.sidebar.title("Filters")
+country_filter = st.sidebar.selectbox("Country", ["All"] + list(pd.read_csv("data.csv")["country"].unique()))
+date_filter = st.sidebar.date_input("Date Range", value=[pd.to_datetime("2022-01-01"), pd.to_datetime("2022-12-31")])
 
-# Function to plot revenue over time
-def plot_revenue_over_time(df):
-    fig = px.line(df, x='date', y='revenue', color='country', title='Revenue Over Time')
-    fig.update_layout(xaxis_title='Date', yaxis_title='Revenue')
-    return fig
+# Upload CSV support
+uploaded_file = st.sidebar.file_uploader("Upload CSV", type=["csv"])
 
-# Function to plot users over time
-def plot_users_over_time(df):
-    fig = px.line(df, x='date', y='users', color='country', title='Users Over Time')
-    fig.update_layout(xaxis_title='Date', yaxis_title='Users')
-    return fig
+if uploaded_file is not None:
+    # Load uploaded CSV
+    df = pd.read_csv(uploaded_file)
+else:
+    # Load default CSV
+    df = pd.read_csv("data.csv")
 
-# Main function
-def main():
-    # Set page configuration
-    st.set_page_config(page_title='Revenue Dashboard', page_icon=':bar_chart:', layout='wide')
+# Apply filters
+if country_filter != "All":
+    df = df[df["country"] == country_filter]
+df = df[(df["date"] >= pd.to_datetime(date_filter[0])) & (df["date"] <= pd.to_datetime(date_filter[1]))]
 
-    # Set sidebar configuration
-    st.sidebar.image('https://raw.githubusercontent.com/streamlit/streamlit/develop/logo/index.png', width=100)
-    st.sidebar.markdown('## Revenue Dashboard')
+# KPI cards
+st.title("KPIs")
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.metric(label="Total Revenue", value=f"${df['revenue'].sum():,.2f}")
+with col2:
+    st.metric(label="Total Users", value=f"{df['users'].sum():,}")
+with col3:
+    st.metric(label="Average Revenue per User", value=f"${df['revenue'].sum() / df['users'].sum():,.2f}")
 
-    # Upload CSV file
-    uploaded_file = st.sidebar.file_uploader('Upload CSV file', type=['csv'])
+# Plotly charts
+st.title("Charts")
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=df["date"], y=df["revenue"], mode="lines", name="Revenue"))
+fig.add_trace(go.Scatter(x=df["date"], y=df["users"], mode="lines", name="Users"))
+fig.update_layout(title="Revenue and Users Over Time", xaxis_title="Date", yaxis_title="Value")
+st.plotly_chart(fig, use_container_width=True)
 
-    # Load sample data if no file is uploaded
-    if uploaded_file is None:
-        df = load_data('https://raw.githubusercontent.com/streamlit/demo-plotly/main/data.csv')
-    else:
-        df = load_data(uploaded_file)
+# Search and filtering
+st.title("Data")
+search_term = st.text_input("Search")
+if search_term:
+    df_filtered = df[df.apply(lambda row: row.astype(str).str.contains(search_term, case=False).any(), axis=1)]
+else:
+    df_filtered = df
+st.write(df_filtered)
 
-    # Display KPI cards
-    col1, col2, col3 = st.columns(3)
-    col1.metric('Total Revenue', f'${df["revenue"].sum():,}')
-    col2.metric('Total Users', f'{df["users"].sum():,}')
-    col3.metric('Countries', f'{len(df["country"].unique())}')
+# Download CSV button
+@st.cache
+def convert_df(df):
+    return df.to_csv(index=False)
+csv = convert_df(df_filtered)
+st.download_button("Download CSV", csv, "data.csv", "text/csv")
 
-    # Display filters
-    date_range = st.sidebar.date_input('Select Date Range', [df['date'].min(), df['date'].max()])
-    country_list = st.sidebar.multiselect('Select Countries', df['country'].unique())
-
-    # Filter data
-    filtered_df = filter_data(df, date_range, country_list)
-
-    # Display search and filtering
-    search_term = st.sidebar.text_input('Search for countries')
-    filtered_df = filtered_df[filtered_df['country'].str.contains(search_term, case=False)]
-
-    # Display plots
-    col1, col2 = st.columns(2)
-    col1.plotly_chart(plot_revenue_over_time(filtered_df))
-    col2.plotly_chart(plot_users_over_time(filtered_df))
-
-    # Download CSV button
-    @st.cache
-    def convert_df(df):
-        return df.to_csv(index=False)
-    csv = convert_df(filtered_df)
-    st.download_button('Download CSV', csv, 'revenue_dashboard.csv', 'text/csv', key='download-csv')
-
-if __name__ == '__main__':
-    main()
+# Responsive layout
+st.set_option('deprecation.showPyplotGlobalUse', False)
