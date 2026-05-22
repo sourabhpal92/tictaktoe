@@ -1,73 +1,139 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from streamlit import cache
-import io
+from datetime import datetime
+import os
 
-# Set page title and layout
-st.set_page_config(layout='wide', page_title='Revenue Dashboard')
+# Set page configuration
+st.set_page_config(
+    page_title="Revenue Dashboard",
+    page_icon="",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# Initialize sidebar filters
-st.sidebar.title('Filters')
-country_filter = st.sidebar.multiselect('Country', options=None, default=None)
-start_date_filter = st.sidebar.date_input('Start Date')
-end_date_filter = st.sidebar.date_input('End Date')
+# Function to load data
+@st.cache(allow_output_mutation=True)
+def load_data(file):
+    return pd.read_csv(file)
 
-# Load data from uploaded CSV
-uploaded_file = st.sidebar.file_uploader('Upload CSV File')
-if uploaded_file is not None:
-    df = pd.read_csv(uploaded_file)
-else:
-    df = pd.DataFrame(columns=['date', 'revenue', 'users', 'country'])
-
-# Update country filter options if data is available
-if not df.empty:
-    country_filter_options = df['country'].unique()
-    country_filter = st.sidebar.multiselect('Country', options=country_filter_options, default=None)
-
-# Apply filters to data
-@cache
-def filter_data(df, country_filter, start_date_filter, end_date_filter):
+# Function to filter data
+def filter_data(df, country, start_date, end_date):
     filtered_df = df.copy()
-    if country_filter:
-        filtered_df = filtered_df[filtered_df['country'].isin(country_filter)]
-    if start_date_filter:
-        filtered_df = filtered_df[filtered_df['date'] >= start_date_filter]
-    if end_date_filter:
-        filtered_df = filtered_df[filtered_df['date'] <= end_date_filter]
+    if country:
+        filtered_df = filtered_df[filtered_df['country'].isin(country)]
+    if start_date:
+        filtered_df = filtered_df[filtered_df['date'] >= start_date]
+    if end_date:
+        filtered_df = filtered_df[filtered_df['date'] <= end_date]
     return filtered_df
 
-# Display KPI cards
-def display_kpi_cards(filtered_df):
+# Create dashboard
+def create_dashboard(df):
+    # Create sidebar
+    with st.sidebar:
+        st.title("Filters")
+        country = st.multiselect(
+            "Country",
+            df['country'].unique(),
+            default=df['country'].unique()
+        )
+        start_date = st.date_input(
+            "Start Date",
+            min_value=df['date'].min(),
+            max_value=df['date'].max(),
+            value=df['date'].min()
+        )
+        end_date = st.date_input(
+            "End Date",
+            min_value=df['date'].min(),
+            max_value=df['date'].max(),
+            value=df['date'].max()
+        )
+        file = st.file_uploader(
+            "Upload CSV",
+            type="csv",
+            help="Upload a CSV file to update the dashboard"
+        )
+        if st.button("Download CSV"):
+            @st.cache
+            def convert_df(df):
+                return df.to_csv().encode('utf-8')
+            csv = convert_df(filtered_df)
+            st.download_button(
+                "Download CSV",
+                csv,
+                "data.csv",
+                "text/csv",
+                key='download-csv'
+            )
+
+    # Filter data
+    filtered_df = filter_data(df, country, start_date, end_date)
+
+    # Create KPI cards
     col1, col2, col3 = st.columns(3)
-    col1.metric(label='Total Revenue', value=f"${filtered_df['revenue'].sum():,.0f}")
-    col2.metric(label='Total Users', value=f"{filtered_df['users'].sum():,.0f}")
-    col3.metric(label='Average Revenue per User', value=f"${filtered_df['revenue'].sum() / filtered_df['users'].sum():,.2f}")
+    with col1:
+        kpi1 = st.card(
+            "Revenue",
+            value=f"${filtered_df['revenue'].sum():,.2f}"
+        )
+    with col2:
+        kpi2 = st.card(
+            "Users",
+            value=f"{filtered_df['users'].sum():,}"
+        )
+    with col3:
+        kpi3 = st.card(
+            "Countries",
+            value=f"{len(country)}"
+        )
 
-# Display Plotly charts
-def display_charts(filtered_df):
-    revenue_line_chart = px.line(filtered_df, x='date', y='revenue', title='Revenue Over Time')
-    users_line_chart = px.line(filtered_df, x='date', y='users', title='Users Over Time')
-    country_bar_chart = px.bar(filtered_df.groupby('country')['revenue'].sum().reset_index(), x='country', y='revenue', title='Revenue by Country')
-    
-    col1, col2 = st.columns(2)
-    col1.plotly_chart(revenue_line_chart, use_container_width=True)
-    col2.plotly_chart(users_line_chart, use_container_width=True)
-    st.plotly_chart(country_bar_chart, use_container_width=True)
+    # Create charts
+    st.subheader("Revenue Over Time")
+    revenue_fig = px.line(
+        filtered_df,
+        x="date",
+        y="revenue",
+        title="Revenue Over Time"
+    )
+    st.plotly_chart(revenue_fig, use_container_width=True)
 
-# Main app logic
-st.title('Revenue Dashboard')
-if not df.empty:
-    filtered_df = filter_data(df, country_filter, start_date_filter, end_date_filter)
-    display_kpi_cards(filtered_df)
-    display_charts(filtered_df)
-    st.subheader('Data Table')
-    st.write(filtered_df)
+    st.subheader("Users Over Time")
+    users_fig = px.line(
+        filtered_df,
+        x="date",
+        y="users",
+        title="Users Over Time"
+    )
+    st.plotly_chart(users_fig, use_container_width=True)
 
-# Download CSV button
-def download_csv(df):
-    csv = df.to_csv(index=False)
-    st.download_button('Download CSV', csv, 'revenue_data.csv', 'text/csv')
+    st.subheader("Country Breakdown")
+    country_fig = px.pie(
+        filtered_df,
+        values="revenue",
+        names="country",
+        title="Country Breakdown"
+    )
+    st.plotly_chart(country_fig, use_container_width=True)
 
-if not df.empty:
-    download_csv(filtered_df)
+# Load initial data
+if os.path.exists("data.csv"):
+    df = load_data("data.csv")
+else:
+    df = pd.DataFrame({
+        "date": ["2022-01-01", "2022-01-02", "2022-01-03"],
+        "revenue": [100, 200, 300],
+        "users": [10, 20, 30],
+        "country": ["USA", "Canada", "Mexico"]
+    })
+
+# Create dashboard
+create_dashboard(df)
+
+# Update data if file is uploaded
+if st.sidebar.file_uploader:
+    file = st.sidebar.file_uploader
+    if file is not None:
+        df = load_data(file)
+        create_dashboard(df)
