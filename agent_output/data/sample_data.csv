@@ -1,0 +1,7 @@
+ID,Name,Category,Value,Date,Status
+1,Alpha,A,100,2023-01-01,Active
+2,Beta,B,150,2023-01-05,Inactive
+3,Gamma,A,200,2023-01-10,Active
+4,Delta,C,120,2023-01-15,Active
+5,Epsilon,B,180,2023-01-20,Inactive
+6,Zeta,A,90,2023-01-25,Active
