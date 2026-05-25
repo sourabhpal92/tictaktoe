@@ -3,181 +3,142 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tic Tac Toe Game</title>
+    <title>Tic Tac Toe</title>
     <style>
         body {
+            background-color: #C6F4D6; /* light green */
             font-family: Arial, sans-serif;
-            text-align: center;
         }
-        
+
         .game-board {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            grid-gap: 10px;
-            width: 300px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 300px; /* adjust width as needed */
             margin: 40px auto;
         }
-        
-        .game-square {
-            background-color: #f0f0f0;
-            padding: 40px;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            font-size: 24px;
+
+        .row {
+            display: flex;
+        }
+
+        .square {
+            width: 100px;
+            height: 100px;
+            border: 1px solid #000;
+            font-size: 36px;
             font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
         }
-        
-        .game-square:hover {
-            background-color: #ccc;
-        }
-        
+
         .restart-button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 18px;
+            border: none;
+            border-radius: 5px;
             background-color: #4CAF50;
             color: #fff;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 10px;
             cursor: pointer;
-            font-size: 16px;
         }
-        
+
         .restart-button:hover {
             background-color: #3e8e41;
         }
-        
-        .win-message {
-            font-size: 24px;
-            font-weight: bold;
-            color: #666;
-            margin-bottom: 20px;
-        }
-        
-        .draw-message {
-            font-size: 24px;
-            font-weight: bold;
-            color: #666;
-            margin-bottom: 20px;
+
+        @media only screen and (max-width: 600px) {
+            .game-board {
+                width: 200px;
+            }
+            .square {
+                width: 60px;
+                height: 60px;
+                font-size: 24px;
+            }
         }
     </style>
 </head>
 <body>
-    <h1>Tic Tac Toe Game</h1>
-    <div class="game-board" id="game-board">
-        <button class="game-square" id="square-0"></button>
-        <button class="game-square" id="square-1"></button>
-        <button class="game-square" id="square-2"></button>
-        <button class="game-square" id="square-3"></button>
-        <button class="game-square" id="square-4"></button>
-        <button class="game-square" id="square-5"></button>
-        <button class="game-square" id="square-6"></button>
-        <button class="game-square" id="square-7"></button>
-        <button class="game-square" id="square-8"></button>
+    <div class="game-board">
+        <div class="row">
+            <div class="square" id="square-0"></div>
+            <div class="square" id="square-1"></div>
+            <div class="square" id="square-2"></div>
+        </div>
+        <div class="row">
+            <div class="square" id="square-3"></div>
+            <div class="square" id="square-4"></div>
+            <div class="square" id="square-5"></div>
+        </div>
+        <div class="row">
+            <div class="square" id="square-6"></div>
+            <div class="square" id="square-7"></div>
+            <div class="square" id="square-8"></div>
+        </div>
     </div>
-    <button class="restart-button" id="restart-button">Restart Game</button>
-    <div class="win-message" id="win-message"></div>
-    <div class="draw-message" id="draw-message"></div>
-
+    <button class="restart-button">Restart Game</button>
     <script>
-        class Game {
-            constructor() {
-                this.gameBoard = [];
-                this.activePlayer = 'X';
-                this.gameOver = false;
-                this.initGameBoard();
-                this.addEventListeners();
-            }
+        let gameBoard = [' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '];
+        let currentPlayer = 'X';
 
-            initGameBoard() {
-                for (let i = 0; i < 9; i++) {
-                    this.gameBoard.push('');
-                    const square = document.getElementById(`square-${i}`);
-                    square.innerHTML = '';
-                }
-            }
-
-            addEventListeners() {
-                const squares = document.querySelectorAll('.game-square');
-                squares.forEach((square) => {
-                    square.addEventListener('click', () => {
-                        if (!this.gameOver) {
-                            const index = parseInt(square.id.split('-')[1]);
-                            if (this.gameBoard[index] === '') {
-                                this.gameBoard[index] = this.activePlayer;
-                                square.innerHTML = this.activePlayer;
-                                this.checkWinConditions();
-                                this.checkDrawConditions();
-                                this.activePlayer = this.activePlayer === 'X' ? 'O' : 'X';
-                            }
-                        }
-                    });
-                });
-
-                const restartButton = document.getElementById('restart-button');
-                restartButton.addEventListener('click', () => {
-                    this.restartGame();
-                });
-            }
-
-            checkWinConditions() {
-                const winConditions = [
-                    [0, 1, 2],
-                    [3, 4, 5],
-                    [6, 7, 8],
-                    [0, 3, 6],
-                    [1, 4, 7],
-                    [2, 5, 8],
-                    [0, 4, 8],
-                    [2, 4, 6],
-                ];
-
-                for (let i = 0; i < winConditions.length; i++) {
-                    const condition = winConditions[i];
-                    if (
-                        this.gameBoard[condition[0]] === this.gameBoard[condition[1]] &&
-                        this.gameBoard[condition[1]] === this.gameBoard[condition[2]] &&
-                        this.gameBoard[condition[0]] !== ''
-                    ) {
-                        this.gameOver = true;
-                        this.displayWinMessage(this.gameBoard[condition[0]]);
-                        return;
-                    }
-                }
-            }
-
-            checkDrawConditions() {
-                if (!this.gameOver && !this.gameBoard.includes('')) {
-                    this.gameOver = true;
-                    this.displayDrawMessage();
-                }
-            }
-
-            displayWinMessage(winner) {
-                const winMessage = document.getElementById('win-message');
-                winMessage.innerHTML = `Player ${winner} wins!`;
-                winMessage.style.display = 'block';
-            }
-
-            displayDrawMessage() {
-                const drawMessage = document.getElementById('draw-message');
-                drawMessage.innerHTML = 'It\'s a draw!';
-                drawMessage.style.display = 'block';
-            }
-
-            restartGame() {
-                this.gameOver = false;
-                this.activePlayer = 'X';
-                this.initGameBoard();
-                const winMessage = document.getElementById('win-message');
-                winMessage.innerHTML = '';
-                winMessage.style.display = 'none';
-                const drawMessage = document.getElementById('draw-message');
-                drawMessage.innerHTML = '';
-                drawMessage.style.display = 'none';
+        function handleSquareClick(index) {
+            if (gameBoard[index] === ' ') {
+                gameBoard[index] = currentPlayer;
+                renderGameBoard();
+                checkWin();
+                currentPlayer = (currentPlayer === 'X') ? 'O' : 'X';
             }
         }
 
-        const game = new Game();
+        function checkWin() {
+            const winConditions = [
+                [0, 1, 2],
+                [3, 4, 5],
+                [6, 7, 8],
+                [0, 3, 6],
+                [1, 4, 7],
+                [2, 5, 8],
+                [0, 4, 8],
+                [2, 4, 6]
+            ];
+
+            for (let i = 0; i < winConditions.length; i++) {
+                const [a, b, c] = winConditions[i];
+                if (gameBoard[a] === gameBoard[b] && gameBoard[b] === gameBoard[c] && gameBoard[a] !== ' ') {
+                    alert(`Player ${gameBoard[a]} wins!`);
+                    return;
+                }
+            }
+
+            if (!gameBoard.includes(' ')) {
+                alert('It\'s a draw!');
+            }
+        }
+
+        function renderGameBoard() {
+            const squares = document.querySelectorAll('.square');
+            for (let i = 0; i < squares.length; i++) {
+                squares[i].textContent = gameBoard[i];
+            }
+        }
+
+        function restartGame() {
+            gameBoard = [' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '];
+            currentPlayer = 'X';
+            renderGameBoard();
+        }
+
+        document.querySelectorAll('.square').forEach((square, index) => {
+            square.addEventListener('click', () => handleSquareClick(index));
+        });
+
+        document.querySelector('.restart-button').addEventListener('click', restartGame);
+
+        renderGameBoard();
     </script>
 </body>
 </html>
