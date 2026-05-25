@@ -1,5 +1,6 @@
-streamlit
-pandas
-snowflake-connector-python
-altair
-python-dotenv
+streamlit==1.45.1
+pandas==2.2.3
+snowflake-connector-python==3.15.0
+plotly==5.22.0
+python-dotenv==1.0.1
+sqlparse==0.5.0

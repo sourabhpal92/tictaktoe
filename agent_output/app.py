@@ -1,462 +1,286 @@
 import streamlit as st
 import pandas as pd
-import altair as alt
-import os
-from dotenv import load_dotenv
+import uuid # For unique chart IDs
 
-# Local imports
-from src.snowflake_dal import SnowflakeConnector
-from src.chart_generator import generate_chart, generate_kpi_metric
+from config import get_snowflake_credentials
+from snowflake_service import (
+    get_connection, execute_query,
+    get_warehouses, get_databases, get_schemas, get_roles
+)
+from viz_builder import build_chart
+from security_utils import validate_sql_query
+from constants import DEFAULT_QUERY_LIMIT, DEFAULT_QUERY_TIMEOUT_SECONDS, SUPPORTED_CHART_TYPES
 
-# Load environment variables for local development
-load_dotenv()
+# --- Page Configuration ---
+st.set_page_config(layout="wide", page_title="Snowflake Analytics Dashboard")
 
-# Initialize Snowflake Connector
-sf_connector = SnowflakeConnector()
-
-# --- Utility Functions ---
-@st.cache_resource
-def get_snowflake_connector():
-    """Returns a cached SnowflakeConnector instance."""
-    return SnowflakeConnector()
-
-def get_snowflake_credentials():
-    """
-    Loads Snowflake credentials from st.secrets or environment variables.
-    """
-    # Prefer st.secrets for Streamlit Cloud deployment
-    if "snowflake" in st.secrets:
-        return st.secrets["snowflake"]
-    
-    # Fallback to environment variables for local development
-    return {
-        "account": os.getenv("SNOWFLAKE_ACCOUNT"),
-        "user": os.getenv("SNOWFLAKE_USER"),
-        "password": os.getenv("SNOWFLAKE_PASSWORD"),
-        "warehouse": os.getenv("SNOWFLAKE_WAREHOUSE"),
-        "database": os.getenv("SNOWFLAKE_DATABASE"),
-        "schema": os.getenv("SNOWFLAKE_SCHEMA"),
-        "role": os.getenv("SNOWFLAKE_ROLE"),
-    }
-
-def initialize_session_state():
-    """Initializes all necessary session state variables."""
-    if "connected_to_snowflake" not in st.session_state:
-        st.session_state.connected_to_snowflake = False
-    if "snowflake_connection_params" not in st.session_state:
-        st.session_state.snowflake_connection_params = {}
-    if "query_history" not in st.session_state:
-        st.session_state.query_history = []
-    if "latest_dataframe" not in st.session_state:
-        st.session_state.latest_dataframe = pd.DataFrame()
-    if "dashboard_charts" not in st.session_state:
-        st.session_state.dashboard_charts = []
-    if "active_filters" not in st.session_state:
-        st.session_state.active_filters = {}
-    if "available_metadata" not in st.session_state:
-        st.session_state.available_metadata = {"warehouses": [], "databases": [], "schemas": [], "roles": []}
-    if "latest_query_text" not in st.session_state:
-        st.session_state.latest_query_text = ""
-    if "latest_query_error" not in st.session_state:
-        st.session_state.latest_query_error = None
-    if "chart_config_key" not in st.session_state:
-        st.session_state.chart_config_key = 0 # Used to reset chart config UI elements
-
-def connect_to_snowflake(account, user, password, warehouse, database, schema, role):
-    """Attempts to connect to Snowflake and updates session state."""
-    try:
-        sf_connector = get_snowflake_connector()
-        with st.spinner("Connecting to Snowflake..."):
-            sf_connector.connect(account, user, password, warehouse, database, schema, role)
-        
-        st.session_state.connected_to_snowflake = True
-        st.session_state.snowflake_connection_params = {
-            "account": account, "user": user, "warehouse": warehouse,
-            "database": database, "schema": schema, "role": role
-        }
-        
-        # Fetch metadata for dropdowns
-        st.session_state.available_metadata["warehouses"] = sf_connector.get_metadata("warehouses")
-        st.session_state.available_metadata["databases"] = sf_connector.get_metadata("databases")
-        st.session_state.available_metadata["schemas"] = sf_connector.get_metadata("schemas")
-        st.session_state.available_metadata["roles"] = sf_connector.get_metadata("roles")
-
-        st.success("Successfully connected to Snowflake!")
-        st.rerun() # Rerun to update UI with connection status and populated dropdowns
-    except ConnectionError as e:
-        st.session_state.connected_to_snowflake = False
-        st.session_state.latest_query_error = str(e)
-        st.error(f"Connection Error: {e}")
-    except Exception as e:
-        st.session_state.connected_to_snowflake = False
-        st.session_state.latest_query_error = str(e)
-        st.error(f"An unexpected error occurred: {e}")
-
-def disconnect_from_snowflake():
-    """Disconnects from Snowflake and resets session state."""
-    sf_connector = get_snowflake_connector()
-    sf_connector.disconnect()
-    st.session_state.connected_to_snowflake = False
-    st.session_state.snowflake_connection_params = {}
+# --- Initialize Session State ---
+if 'sf_connection' not in st.session_state:
+    st.session_state.sf_connection = None
+if 'current_query' not in st.session_state:
+    st.session_state.current_query = "SELECT * FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF1.CUSTOMER LIMIT 100;"
+if 'query_results_df' not in st.session_state:
+    st.session_state.query_results_df = pd.DataFrame()
+if 'active_dashboard' not in st.session_state:
+    st.session_state.active_dashboard = []
+if 'sf_context' not in st.session_state:
+    st.session_state.sf_context = {}
+if 'query_history' not in st.session_state:
     st.session_state.query_history = []
-    st.session_state.latest_dataframe = pd.DataFrame()
-    st.session_state.dashboard_charts = []
-    st.session_state.active_filters = {}
-    st.session_state.available_metadata = {"warehouses": [], "databases": [], "schemas": [], "roles": []}
-    st.session_state.latest_query_text = ""
-    st.session_state.latest_query_error = None
-    st.success("Disconnected from Snowflake.")
-    st.rerun() # Rerun to update UI with disconnected state
+if 'query_settings' not in st.session_state:
+    st.session_state.query_settings = {
+        'row_limit': DEFAULT_QUERY_LIMIT,
+        'timeout': DEFAULT_QUERY_TIMEOUT_SECONDS
+    }
+if 'connection_params' not in st.session_state:
+    st.session_state.connection_params = get_snowflake_credentials() or {}
 
-@st.cache_data(ttl=3600) # Cache query results for 1 hour
-def execute_snowflake_query(query: str, connection_params: dict):
-    """
-    Executes a Snowflake query and returns a DataFrame.
-    This function is wrapped in st.cache_data.
-    """
-    sf_connector_cached = get_snowflake_connector()
-    # Re-establish connection for cached function if not connected, using provided params
-    # This is important for cache invalidation based on connection params
-    if not sf_connector_cached.is_connected() or sf_connector_cached.connection_params != connection_params:
-        sf_connector_cached.connect(
-            connection_params["account"], connection_params["user"],
-            os.getenv("SNOWFLAKE_PASSWORD") if not st.secrets.get("snowflake") else st.secrets["snowflake"]["password"],
-            connection_params.get("warehouse"), connection_params.get("database"),
-            connection_params.get("schema"), connection_params.get("role")
-        )
-    
-    df = sf_connector_cached.execute_query(query)
-    return df
+# --- Helper Functions ---
+def clear_dashboard():
+    """Clears all charts from the active dashboard."""
+    st.session_state.active_dashboard = []
+    st.session_state.query_results_df = pd.DataFrame() # Also clear results to reset context
 
-def apply_filters_to_dataframe(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
-    """Applies filters from session state to a DataFrame."""
-    filtered_df = df.copy()
-    if not filters:
-        return filtered_df
+def connect_to_snowflake_handler():
+    """Handles the connection button click."""
+    st.session_state.sf_connection = get_connection(
+        st.session_state.connection_params,
+        st.session_state.sf_context
+    )
 
-    for col, values in filters.items():
-        if col in filtered_df.columns and values:
-            if pd.api.types.is_numeric_dtype(filtered_df[col]):
-                min_val, max_val = values
-                filtered_df = filtered_df[(filtered_df[col] >= min_val) & (filtered_df[col] <= max_val)]
-            else:
-                filtered_df = filtered_df[filtered_df[col].isin(values)]
-    return filtered_df
+def execute_query_handler():
+    """Handles query execution."""
+    if not st.session_state.sf_connection:
+        st.error("Please connect to Snowflake first.")
+        return
+
+    is_valid, message = validate_sql_query(st.session_state.current_query)
+    if not is_valid:
+        st.error(f"SQL Validation Error: {message}")
+        return
+
+    # Invalidate @st.cache_data for execute_query before calling it
+    # This ensures new query text gets new data
+    st.cache_data.clear() 
+
+    df = execute_query(
+        st.session_state.sf_connection,
+        st.session_state.current_query,
+        row_limit=st.session_state.query_settings['row_limit'],
+        timeout=st.session_state.query_settings['timeout']
+    )
+    st.session_state.query_results_df = df
+    if st.session_state.current_query not in st.session_state.query_history:
+        st.session_state.query_history.insert(0, st.session_state.current_query)
+        if len(st.session_state.query_history) > 10: # Keep last 10 queries
+            st.session_state.query_history.pop()
+
+def add_chart_to_dashboard(chart_type, x_col, y_col, names_col, values_col, color_col, size_col, value_col, delta_col, title):
+    """Adds a new chart configuration to the dashboard."""
+    chart_config = {
+        'id': str(uuid.uuid4()), # Unique ID for each chart
+        'type': chart_type,
+        'title': title
+    }
+    # Add relevant columns based on chart type
+    if chart_type in ["Bar Chart", "Line Chart", "Scatter Plot", "Area Chart"]:
+        chart_config['x_col'] = x_col
+        chart_config['y_col'] = y_col
+        chart_config['color_col'] = color_col
+        if chart_type == "Scatter Plot":
+            chart_config['size_col'] = size_col
+    elif chart_type == "Pie Chart":
+        chart_config['names_col'] = names_col
+        chart_config['values_col'] = values_col
+    elif chart_type == "Histogram":
+        chart_config['x_col'] = x_col
+        chart_config['color_col'] = color_col
+    elif chart_type == "KPI Metric":
+        chart_config['value_col'] = value_col
+        chart_config['delta_col'] = delta_col
+
+    st.session_state.active_dashboard.append(chart_config)
 
 
-# --- Streamlit UI Layout ---
-st.set_page_config(layout="wide", page_title="Snowflake Analytics App")
-st.title("❄️ Snowflake Analytics Dashboard")
+# --- UI Layout ---
 
-initialize_session_state()
+st.sidebar.title("Snowflake Analytics App")
 
-# --- Sidebar for Connection and Filters ---
-with st.sidebar:
-    st.header("Snowflake Connection")
-    creds = get_snowflake_credentials()
+# --- Sidebar: Connection Configuration ---
+with st.sidebar.expander("❄️ Snowflake Connection", expanded=not st.session_state.sf_connection):
+    st.session_state.connection_params['account'] = st.text_input(
+        "Account", value=st.session_state.connection_params.get('account', ''), key="account_input"
+    )
+    st.session_state.connection_params['user'] = st.text_input(
+        "User", value=st.session_state.connection_params.get('user', ''), key="user_input"
+    )
+    st.session_state.connection_params['password'] = st.text_input(
+        "Password", type="password", value=st.session_state.connection_params.get('password', ''), key="password_input"
+    )
 
-    # Input fields for connection
-    st.text_input("Account", value=creds.get("account", ""), key="sf_account",
-                  disabled=st.session_state.connected_to_snowflake)
-    st.text_input("User", value=creds.get("user", ""), key="sf_user",
-                  disabled=st.session_state.connected_to_snowflake)
-    st.text_input("Password", type="password", value=creds.get("password", ""), key="sf_password",
-                  disabled=st.session_state.connected_to_snowflake)
+    if st.button("Connect to Snowflake", use_container_width=True):
+        connect_to_snowflake_handler()
 
-    # Context selectors
-    current_warehouse = st.session_state.snowflake_connection_params.get("warehouse", creds.get("warehouse"))
-    current_database = st.session_state.snowflake_connection_params.get("database", creds.get("database"))
-    current_schema = st.session_state.snowflake_connection_params.get("schema", creds.get("schema"))
-    current_role = st.session_state.snowflake_connection_params.get("role", creds.get("role"))
-
-    # Populate dropdowns only if connected and metadata is available
-    if st.session_state.connected_to_snowflake:
-        warehouses = st.session_state.available_metadata["warehouses"]
-        databases = st.session_state.available_metadata["databases"]
-        schemas = st.session_state.available_metadata["schemas"]
-        roles = st.session_state.available_metadata["roles"]
-
-        selected_warehouse = st.selectbox("Warehouse", options=warehouses, index=warehouses.index(current_warehouse) if current_warehouse in warehouses else 0, key="sf_warehouse")
-        selected_database = st.selectbox("Database", options=databases, index=databases.index(current_database) if current_database in databases else 0, key="sf_database")
-        selected_schema = st.selectbox("Schema", options=schemas, index=schemas.index(current_schema) if current_schema in schemas else 0, key="sf_schema")
-        selected_role = st.selectbox("Role", options=roles, index=roles.index(current_role) if current_role in roles else 0, key="sf_role")
-
-        # Update context if selections change
-        if (selected_warehouse != current_warehouse or
-            selected_database != current_database or
-            selected_schema != current_schema or
-            selected_role != current_role):
-            try:
-                with st.spinner("Updating Snowflake context..."):
-                    sf_connector = get_snowflake_connector()
-                    sf_connector.set_context(selected_warehouse, selected_database, selected_schema, selected_role)
-                    st.session_state.snowflake_connection_params["warehouse"] = selected_warehouse
-                    st.session_state.snowflake_connection_params["database"] = selected_database
-                    st.session_state.snowflake_connection_params["schema"] = selected_schema
-                    st.session_state.snowflake_connection_params["role"] = selected_role
-                st.success("Snowflake context updated.")
-                # After updating context, refresh schemas if database changed
-                if selected_database != current_database:
-                     st.session_state.available_metadata["schemas"] = sf_connector.get_metadata("schemas")
-            except Exception as e:
-                st.error(f"Failed to update context: {e}")
-
-    col1_conn, col2_conn = st.columns(2)
-    with col1_conn:
-        if st.button("Connect", disabled=st.session_state.connected_to_snowflake, use_container_width=True):
-            if st.session_state.sf_account and st.session_state.sf_user and st.session_state.sf_password:
-                connect_to_snowflake(
-                    st.session_state.sf_account,
-                    st.session_state.sf_user,
-                    st.session_state.sf_password,
-                    st.session_state.sf_warehouse if st.session_state.connected_to_snowflake else creds.get("warehouse"),
-                    st.session_state.sf_database if st.session_state.connected_to_snowflake else creds.get("database"),
-                    st.session_state.sf_schema if st.session_state.connected_to_snowflake else creds.get("schema"),
-                    st.session_state.sf_role if st.session_state.connected_to_snowflake else creds.get("role")
-                )
-            else:
-                st.warning("Please enter all required Snowflake credentials.")
-    with col2_conn:
-        if st.button("Disconnect", disabled=not st.session_state.connected_to_snowflake, use_container_width=True):
-            disconnect_from_snowflake()
-
-    if st.session_state.connected_to_snowflake:
-        st.success(f"Connected to: {st.session_state.snowflake_connection_params.get('account')}")
-        st.markdown(f"**Warehouse:** {st.session_state.snowflake_connection_params.get('warehouse')}  \n**Database:** {st.session_state.snowflake_connection_params.get('database')}  \n**Schema:** {st.session_state.snowflake_connection_params.get('schema')}  \n**Role:** {st.session_state.snowflake_connection_params.get('role')}")
-    else:
-        st.warning("Disconnected from Snowflake. Please connect to proceed.")
-
-    st.markdown("---")
-    st.header("Dashboard Filters")
-    if not st.session_state.latest_dataframe.empty:
-        df_columns = st.session_state.latest_dataframe.columns.tolist()
+    if st.session_state.sf_connection:
+        st.success("Connected to Snowflake!")
+        # Fetch available context items
+        warehouses = get_warehouses(st.session_state.sf_connection)
+        databases = get_databases(st.session_state.sf_connection)
+        roles = get_roles(st.session_state.sf_connection)
         
-        # Clear existing filters button
-        if st.button("Clear All Filters", key="clear_filters"):
-            st.session_state.active_filters = {}
-            st.rerun()
+        # Determine current selection or default
+        current_warehouse = st.session_state.sf_context.get('warehouse')
+        current_database = st.session_state.sf_context.get('database')
+        current_role = st.session_state.sf_context.get('role')
 
-        for col in df_columns:
-            if col not in st.session_state.active_filters: # Add filter only if not already present
-                if st.button(f"Add Filter for {col}", key=f"add_filter_{col}"):
-                    st.session_state.active_filters[col] = [] # Initialize with empty list
-                    st.rerun()
+        # Selectboxes for context
+        selected_warehouse = st.selectbox(
+            "Warehouse", options=warehouses, 
+            index=warehouses.index(current_warehouse) if current_warehouse in warehouses else 0,
+            key="sf_warehouse"
+        )
+        selected_database = st.selectbox(
+            "Database", options=databases, 
+            index=databases.index(current_database) if current_database in databases else 0,
+            key="sf_database"
+        )
+        # Update schemas when database changes
+        schemas = get_schemas(st.session_state.sf_connection, selected_database)
+        current_schema = st.session_state.sf_context.get('schema')
+        selected_schema = st.selectbox(
+            "Schema", options=schemas, 
+            index=schemas.index(current_schema) if current_schema in schemas else 0,
+            key="sf_schema"
+        )
+        selected_role = st.selectbox(
+            "Role", options=roles, 
+            index=roles.index(current_role) if current_role in roles else 0,
+            key="sf_role"
+        )
 
-        st.subheader("Active Filters")
-        if not st.session_state.active_filters:
-            st.info("No filters applied yet. Use 'Add Filter' buttons above.")
-
-        for col, current_selection in list(st.session_state.active_filters.items()): # Use list to allow modification during iteration
-            st.write(f"**{col}**")
-            if pd.api.types.is_numeric_dtype(st.session_state.latest_dataframe[col]):
-                min_val, max_val = float(st.session_state.latest_dataframe[col].min()), float(st.session_state.latest_dataframe[col].max())
-                if not current_selection: # Set initial range if empty
-                    current_selection = (min_val, max_val)
-                selected_range = st.slider(
-                    f"Select range for {col}",
-                    min_value=min_val,
-                    max_value=max_val,
-                    value=current_selection if current_selection else (min_val, max_val),
-                    key=f"filter_slider_{col}"
-                )
-                if selected_range != st.session_state.active_filters.get(col):
-                    st.session_state.active_filters[col] = selected_range
-            else:
-                unique_values = st.session_state.latest_dataframe[col].unique().tolist()
-                selected_values = st.multiselect(
-                    f"Select values for {col}",
-                    options=unique_values,
-                    default=current_selection if current_selection else unique_values,
-                    key=f"filter_multiselect_{col}"
-                )
-                if set(selected_values) != set(st.session_state.active_filters.get(col, [])):
-                    st.session_state.active_filters[col] = selected_values
-
-            if st.button(f"Remove Filter for {col}", key=f"remove_filter_{col}"):
-                del st.session_state.active_filters[col]
-                st.rerun()
+        # Update session state context
+        st.session_state.sf_context = {
+            'warehouse': selected_warehouse,
+            'database': selected_database,
+            'schema': selected_schema,
+            'role': selected_role
+        }
+        st.info(f"Context: WH={selected_warehouse}, DB={selected_database}, Schema={selected_schema}, Role={selected_role}")
     else:
-        st.info("Execute a query first to enable dashboard filters.")
+        st.warning("Not connected to Snowflake.")
 
+# --- Sidebar: Query Settings ---
+with st.sidebar.expander("⚙️ Query Settings"):
+    st.session_state.query_settings['row_limit'] = st.number_input(
+        "Row Limit", min_value=1, value=st.session_state.query_settings['row_limit'], step=100
+    )
+    st.session_state.query_settings['timeout'] = st.number_input(
+        "Query Timeout (seconds)", min_value=30, value=st.session_state.query_settings['timeout'], step=30
+    )
 
 # --- Main Content Area ---
-tab_sql, tab_dashboard = st.tabs(["SQL Editor & Results", "Dashboard"])
+st.header("SQL Query Editor")
 
-with tab_sql:
-    st.header("SQL Query Editor")
-    if st.session_state.connected_to_snowflake:
-        query_text = st.text_area(
-            "Enter your SQL query here:",
-            value=st.session_state.latest_query_text,
-            height=250,
-            key="sql_editor_area"
-        )
+sql_query_input = st.text_area(
+    "Enter your SQL query here:",
+    height=200,
+    value=st.session_state.current_query,
+    key="sql_editor"
+)
+st.session_state.current_query = sql_query_input
 
-        col_exec, col_hist = st.columns([1, 4])
-        with col_exec:
-            if st.button("Execute Query", use_container_width=True):
-                if query_text:
-                    st.session_state.latest_query_text = query_text
-                    st.session_state.latest_query_error = None # Clear previous error
-                    try:
-                        with st.spinner("Executing query..."):
-                            df = execute_snowflake_query(query_text, st.session_state.snowflake_connection_params)
-                        st.session_state.latest_dataframe = df
-                        st.session_state.query_history.append(query_text)
-                        st.success("Query executed successfully!")
-                        if not df.empty:
-                            st.info(f"Fetched {len(df)} rows and {len(df.columns)} columns.")
-                        else:
-                            st.warning("Query returned no data.")
-                    except ValueError as e: # Catch SQL errors
-                        st.session_state.latest_query_error = str(e)
-                        st.error(f"SQL Execution Error: {e}")
-                    except ConnectionError as e: # Catch connection errors within cached function
-                        st.session_state.latest_query_error = str(e)
-                        st.error(f"Connection Error: {e}. Please check your connection.")
-                    except Exception as e:
-                        st.session_state.latest_query_error = str(e)
-                        st.error(f"An unexpected error occurred: {e}")
-                else:
-                    st.warning("Please enter a SQL query to execute.")
-        with col_hist:
-            if st.session_state.query_history:
-                selected_history_query = st.selectbox(
-                    "Query History",
-                    options=[""] + list(reversed(st.session_state.query_history)),
-                    index=0,
-                    help="Select a past query to load it into the editor.",
-                    key="query_history_select"
-                )
-                if selected_history_query and selected_history_query != st.session_state.latest_query_text:
-                    st.session_state.latest_query_text = selected_history_query
+col1, col2 = st.columns([1, 1])
+with col1:
+    if st.button("Execute Query", type="primary", use_container_width=True):
+        execute_query_handler()
+with col2:
+    if st.session_state.query_results_df.empty and not st.session_state.active_dashboard:
+        st.button("Clear Dashboard", use_container_width=True, disabled=True)
+    else:
+        if st.button("Clear Dashboard", use_container_width=True, help="Clear all charts and query results"):
+            clear_dashboard()
+
+
+st.subheader("Query Results")
+if not st.session_state.query_results_df.empty:
+    st.dataframe(st.session_state.query_results_df, use_container_width=True, height=300)
+    csv = st.session_state.query_results_df.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="Export Results to CSV",
+        data=csv,
+        file_name="query_results.csv",
+        mime="text/csv",
+    )
+else:
+    st.info("Execute a query to see results here.")
+
+st.subheader("Query History")
+if st.session_state.query_history:
+    selected_query_from_history = st.selectbox(
+        "Select a past query to re-run or edit:",
+        options=[""] + st.session_state.query_history,
+        index=0,
+        key="query_history_select"
+    )
+    if selected_query_from_history:
+        st.session_state.current_query = selected_query_from_history
+        st.rerun() # Rerun to update the text_area
+
+# --- Dashboard Builder ---
+st.header("Dashboard Builder")
+
+if not st.session_state.query_results_df.empty:
+    df_columns = st.session_state.query_results_df.columns.tolist()
+    
+    with st.expander("➕ Add New Chart", expanded=True):
+        chart_type = st.selectbox("Select Chart Type", SUPPORTED_CHART_TYPES, key="chart_type_select")
+        chart_title = st.text_input("Chart Title", value=f"{chart_type} (Query Results)", key="chart_title_input")
+
+        # Dynamic column selectors based on chart type
+        x_col, y_col, names_col, values_col, color_col, size_col, value_col, delta_col = [None] * 8
+
+        if chart_type in ["Bar Chart", "Line Chart", "Scatter Plot", "Area Chart", "Histogram"]:
+            x_col = st.selectbox("X-axis Column", options=[""] + df_columns, key="x_col_select")
+            if chart_type in ["Bar Chart", "Line Chart", "Scatter Plot", "Area Chart"]:
+                y_col = st.selectbox("Y-axis Column", options=[""] + df_columns, key="y_col_select")
+            if chart_type in ["Bar Chart", "Line Chart", "Scatter Plot", "Area Chart", "Histogram"]:
+                color_col = st.selectbox("Color By (Optional)", options=[""] + df_columns, key="color_col_select")
+            if chart_type == "Scatter Plot":
+                size_col = st.selectbox("Size By (Optional)", options=[""] + df_columns, key="size_col_select")
+        elif chart_type == "Pie Chart":
+            names_col = st.selectbox("Names Column", options=[""] + df_columns, key="names_col_select")
+            values_col = st.selectbox("Values Column", options=[""] + df_columns, key="values_col_select")
+        elif chart_type == "KPI Metric":
+            value_col = st.selectbox("Value Column", options=[""] + df_columns, help="Select a numeric column for the main KPI value. Takes the first row's value.", key="value_col_select")
+            delta_col = st.selectbox("Delta Column (Optional)", options=[""] + df_columns, help="Select a numeric column representing the change. Takes the first row's value.", key="delta_col_select")
+
+        if st.button("Add Chart to Dashboard", use_container_width=True, key="add_chart_button"):
+            add_chart_to_dashboard(chart_type, x_col, y_col, names_col, values_col, color_col, size_col, value_col, delta_col, chart_title)
+            st.rerun() # Rerun to display the new chart
+
+    st.markdown("---") # Separator
+
+    # --- Display Dashboard ---
+    st.subheader("Your Interactive Dashboard")
+    if st.session_state.active_dashboard:
+        # Simple two-column layout for charts
+        num_charts = len(st.session_state.active_dashboard)
+        cols = st.columns(2) # Two columns per row
+        
+        for i, chart_config in enumerate(st.session_state.active_dashboard):
+            with cols[i % 2]: # Place chart in appropriate column
+                st.write(f"### {chart_config.get('title', 'Untitled Chart')}")
+                try:
+                    fig = build_chart(st.session_state.query_results_df, chart_config)
+                    st.plotly_chart(fig, use_container_width=True)
+                except Exception as e:
+                    st.error(f"Error rendering chart '{chart_config.get('title')}': {e}")
+                
+                if st.button(f"Remove Chart '{chart_config.get('title', 'Untitled')}'", key=f"remove_chart_{chart_config['id']}", use_container_width=True):
+                    st.session_state.active_dashboard.pop(i)
                     st.rerun()
-            else:
-                st.info("No query history yet.")
-
-        st.markdown("---")
-        st.subheader("Query Results")
-        if st.session_state.latest_query_error:
-            st.error(st.session_state.latest_query_error)
-        elif not st.session_state.latest_dataframe.empty:
-            st.dataframe(st.session_state.latest_dataframe, use_container_width=True)
-            
-            # Export data button
-            csv = st.session_state.latest_dataframe.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="Download Results as CSV",
-                data=csv,
-                file_name="snowflake_query_results.csv",
-                mime="text/csv",
-                use_container_width=True
-            )
-        else:
-            st.info("Execute a query to see results here.")
+                st.markdown("---")
     else:
-        st.warning("Please connect to Snowflake in the sidebar to use the SQL editor.")
-
-
-with tab_dashboard:
-    st.header("Interactive Dashboard")
-
-    if not st.session_state.latest_dataframe.empty:
-        st.markdown("---")
-        st.subheader("Add New Chart")
-        
-        # Increment key to reset form on successful chart addition
-        chart_config_key = st.session_state.chart_config_key
-
-        with st.form(key=f"chart_config_form_{chart_config_key}"):
-            df_cols = st.session_state.latest_dataframe.columns.tolist()
-            numeric_cols = st.session_state.latest_dataframe.select_dtypes(include=['number']).columns.tolist()
-            object_cols = st.session_state.latest_dataframe.select_dtypes(include=['object', 'datetime']).columns.tolist()
-
-            chart_type_options = ["Bar", "Line", "Area", "Scatter", "Pie", "KPI Metric"]
-            selected_chart_type = st.selectbox("Chart Type", chart_type_options, key=f"chart_type_{chart_config_key}")
-
-            if selected_chart_type == "KPI Metric":
-                kpi_col = st.selectbox("Select Column for KPI", df_cols, key=f"kpi_col_{chart_config_key}")
-                kpi_agg = st.selectbox("Aggregation", ["count", "sum", "mean", "min", "max"], key=f"kpi_agg_{chart_config_key}")
-                kpi_title = st.text_input("KPI Title", value=f"{kpi_agg.capitalize()} of {kpi_col}", key=f"kpi_title_{chart_config_key}")
-                chart_config = {
-                    "chart_type": "kpi",
-                    "column": kpi_col,
-                    "aggregation": kpi_agg,
-                    "title": kpi_title
-                }
-            else:
-                col_x, col_y = st.columns(2)
-                with col_x:
-                    x_col = st.selectbox("X-axis (Categorical/Time)", df_cols, key=f"x_col_{chart_config_key}")
-                with col_y:
-                    y_col = st.selectbox("Y-axis (Quantitative)", numeric_cols if numeric_cols else df_cols, key=f"y_col_{chart_config_key}")
-
-                color_col = st.selectbox("Color (Optional)", ["None"] + df_cols, key=f"color_col_{chart_config_key}")
-                color_col = None if color_col == "None" else color_col
-
-                agg_options = ["mean", "sum", "count", "min", "max"]
-                y_agg = st.selectbox("Y-axis Aggregation", agg_options, key=f"y_agg_{chart_config_key}")
-
-                chart_title = st.text_input("Chart Title", value=f"{selected_chart_type} of {y_agg.capitalize()} {y_col} by {x_col}", key=f"chart_title_{chart_config_key}")
-
-                chart_config = {
-                    "chart_type": selected_chart_type.lower(),
-                    "x_col": x_col,
-                    "y_col": y_col,
-                    "color_col": color_col,
-                    "title": chart_title,
-                    "aggregation": y_agg
-                }
-
-            add_chart_button = st.form_submit_button("Add Chart to Dashboard")
-
-            if add_chart_button:
-                if selected_chart_type == "KPI Metric":
-                    if kpi_col:
-                        st.session_state.dashboard_charts.append(chart_config)
-                        st.success(f"KPI Metric '{kpi_title}' added!")
-                        st.session_state.chart_config_key += 1 # Reset form
-                        st.rerun()
-                    else:
-                        st.warning("Please select a column for the KPI Metric.")
-                else:
-                    if x_col and y_col:
-                        st.session_state.dashboard_charts.append(chart_config)
-                        st.success(f"'{chart_title}' chart added!")
-                        st.session_state.chart_config_key += 1 # Reset form
-                        st.rerun()
-                    else:
-                        st.warning("Please select both X and Y axis columns.")
-    else:
-        st.info("Execute a SQL query first to generate visualizations.")
-
-    st.markdown("---")
-    st.subheader("Your Dashboard")
-
-    if not st.session_state.dashboard_charts:
-        st.info("No charts added to the dashboard yet. Add charts using the controls above.")
-    else:
-        filtered_df = apply_filters_to_dataframe(st.session_state.latest_dataframe, st.session_state.active_filters)
-        
-        # Use columns for a grid layout, max 2 charts per row
-        cols_per_row = 2
-        for i, chart_cfg in enumerate(st.session_state.dashboard_charts):
-            if i % cols_per_row == 0:
-                chart_cols = st.columns(cols_per_row)
-            
-            with chart_cols[i % cols_per_row]:
-                st.expander(f"⚙️ {chart_cfg.get('title', 'Chart')}", expanded=False).button(
-                    f"Remove '{chart_cfg.get('title', 'Chart')}'", 
-                    key=f"remove_chart_{i}",
-                    on_click=lambda idx=i: st.session_state.dashboard_charts.pop(idx)
-                )
-
-                if chart_cfg["chart_type"] == "kpi":
-                    kpi_value = generate_kpi_metric(filtered_df, chart_cfg["column"], chart_cfg["aggregation"])
-                    st.metric(label=chart_cfg["title"], value=kpi_value)
-                else:
-                    chart = generate_chart(filtered_df, chart_cfg)
-                    if chart:
-                        st.altair_chart(chart, use_container_width=True)
-                    else:
-                        st.error(f"Could not render chart: {chart_cfg.get('title', 'Unknown Chart')}. Check configuration and data types.")
+        st.info("Add charts above to build your dashboard.")
+else:
+    st.warning("Execute a SQL query first to populate data for dashboarding.")
